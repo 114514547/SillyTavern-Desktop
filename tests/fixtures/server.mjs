@@ -1,0 +1,10 @@
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+const arg=name=>process.argv[process.argv.indexOf('--'+name)+1];
+const root=arg('dataRoot');
+console.log('TEST-SECRET-DO-NOT-LOG');
+console.error('PRIVATE-CHAT-DO-NOT-LOG');
+const server=http.createServer((req,res)=>{res.setHeader('Content-Type','application/json');res.end(req.url==='/csrf-token'?JSON.stringify({token:'fixture-csrf-token'}):'{}');});
+server.listen(Number(arg('port')),'127.0.0.1');
+process.on('SIGTERM',()=>{fs.writeFileSync(path.join(root,'graceful-exit.txt'),'yes');server.close(()=>process.exit(0));});

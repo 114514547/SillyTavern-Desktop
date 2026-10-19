@@ -1,0 +1,63 @@
+appId: org.sillytavern.desktop.personal
+productName: SillyTavern Desktop
+copyright: Copyright © SillyTavern Desktop contributors; upstream SillyTavern contributors
+asar: true
+electronDist: node_modules/electron/dist
+directories:
+  output: dist
+  buildResources: resources
+files:
+  - desktop/**/*
+  - package.json
+  - resources/**/*
+  - vendor/manifest.json
+  - README.zh-CN.md
+  - MIGRATION.md
+  - RELEASE_NOTES.md
+  - UPDATE.md
+  - TEST_RESULTS.md
+extraResources:
+  - from: build/backend.zip
+    to: backend.zip
+  - from: build/backend-files.json
+    to: backend-files.json
+  - from: build/runtime
+    to: runtime
+  - from: desktop/services
+    to: supervisor
+    filter:
+      - guardian.cjs
+      - runner.cjs
+      - lock.cjs
+      - files.cjs
+  - from: build/THIRD-PARTY-NOTICES.txt
+    to: THIRD-PARTY-NOTICES.txt
+  - from: build/SillyTavern-source.zip
+    to: SillyTavern-source.zip
+win:
+  target: nsis
+  icon: resources/icon.ico
+  requestedExecutionLevel: asInvoker
+  signAndEditExecutable: true
+  signtoolOptions:
+    sign: scripts/unsigned.cjs
+nsis:
+  artifactName: SillyTavern-Desktop-Setup-x64.exe
+  oneClick: false
+  perMachine: false
+  allowElevation: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  deleteAppDataOnUninstall: false
+  installerLanguages:
+    - zh_CN
+    - en_US
+  language: 2052
+  license: resources/LICENSE.txt
+compression: normal
+publish:
+  provider: github
+  owner: '114514547'
+  repo: SillyTavern-Desktop
+  releaseType: draft

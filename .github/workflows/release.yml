@@ -1,0 +1,49 @@
+name: Build and publish stable desktop release
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+permissions:
+  contents: write
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Verify release tag and pinned trust key
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") { throw 'Tag and package version mismatch' }
+          node -e "if (!require('./resources/update-policy.json').publicKey) process.exit(1)"
+      - run: npm run prepare:vendor
+      - run: npm run check
+      - run: npm test
+      - run: npm run test:updates
+      - run: npm run test:integration
+      - run: npm run build:win
+      - name: Sign update manifest
+        run: npm run release:sign
+        env:
+          ST_UPDATE_SIGNING_KEY: ${{ secrets.ST_UPDATE_SIGNING_KEY }}
+      - run: npm run source:zip
+      - name: Publish all assets before making release visible
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = node -p "require('./package.json').version"
+          gh release create "v$version" --draft --title "SillyTavern Desktop $version" --notes-file RELEASE_NOTES.md
+          if ($LASTEXITCODE -ne 0) { throw 'Release creation failed' }
+          gh release upload "v$version" dist/SillyTavern-Desktop-Setup-x64.exe dist/SillyTavern-Desktop-Setup-x64.exe.blockmap dist/latest.yml dist/desktop-update.json dist/SillyTavern-Desktop-source.zip
+          if ($LASTEXITCODE -ne 0) { throw 'Asset upload failed; draft retained' }
+          gh release edit "v$version" --draft=false

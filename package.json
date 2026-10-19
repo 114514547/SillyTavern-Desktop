@@ -1,0 +1,42 @@
+{
+  "name": "sillytavern-desktop",
+  "version": "0.2.0",
+  "private": true,
+  "description": "原版 SillyTavern Windows 桌面外壳",
+  "author": "SillyTavern Desktop contributors",
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/114514547/SillyTavern-Desktop.git"
+  },
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "dev": "electron .",
+    "test": "node --test tests/*.test.cjs",
+    "test:integration": "node --test tests/integration/*.test.cjs",
+    "test:desktop": "node scripts/smoke-desktop.cjs",
+    "check": "node scripts/check.cjs",
+    "prepare:vendor": "node scripts/prepare-vendor.cjs",
+    "build:win": "npm run prepare:vendor && electron-builder --win nsis --x64 --publish never",
+    "build:dir": "npm run prepare:vendor && electron-builder --win --dir --x64 --publish never",
+    "source:zip": "node scripts/source-archive.cjs",
+    "update:key": "node scripts/update-key.cjs",
+    "release:sign": "node scripts/sign-release.cjs",
+    "test:updates": "node scripts/smoke-updates.cjs"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.9",
+    "yaml": "2.8.3",
+    "yauzl": "3.2.1"
+  },
+  "devDependencies": {
+    "7zip-bin": "5.2.0",
+    "electron": "44.9.0",
+    "electron-builder": "26.15.3",
+    "libsodium-wrappers": "0.7.15",
+    "playwright-core": "1.61.1"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
