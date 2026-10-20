@@ -6,7 +6,17 @@
 
 真实 electron-updater/NsisUpdater 的本地 HTTP 下载测试已通过：客户端验证签名，标准下载器读取元数据并下载合成 EXE，完成 SHA-512 校验，中文窗口显示可安装状态，然后真实创建校验备份和 pending.json 后交接。为避免修改系统，测试拦截安装调用，没有执行合成 EXE。证据：`test-results/updates-engine.json`、`update-available.png`、`update-downloaded.png`。
 
-0.2.0 安装器构建、实际打包窗口和线上发布结果随后记录；下方 0.1.0 安装器大小及哈希仅对应旧版，不代表新版。
+0.2.0 本地 Windows NSIS 构建成功；本地安装器 312,340,124 字节，SHA-256 为 `1e47c3cdc76fe5931ccae2f0fa9600c15d402f07b22f6d9680bd18cc53435a5b`。打包 ASAR 的主进程源码与当前源码逐字节一致，固定公钥已包含在包内。新增 electron-updater 后外壳生产依赖审计仍为 0 项漏洞。
+
+新打包 EXE 再次通过真实窗口回归：原版 APP_READY、首次用户设置持久化、无 Node/Git/npm 的 PATH、沙箱及上下文隔离、单窗口、第二进程退出、关闭清理、重启和通过启动页使用合成原安装。没有覆盖用户安装在 `D:\sillyTavern desktop` 的程序或其数据。
+
+GitHub Actions 在新的 Windows runner 上完成源码检出、依赖准备、静态检查、23 项测试、真实 NSIS 测试、真实后端集成测试、打包、清单签名和发布，最终 conclusion 为 success。运行地址：https://github.com/114514547/SillyTavern-Desktop/actions/runs/39344432196 ，发布提交为 `f39c19ab1c23f6f0a3157ccd57dc38d18aa9b419`。
+
+正式版本：https://github.com/114514547/SillyTavern-Desktop/releases/tag/v0.2.0 。五个资产已公开：安装器、blockmap、latest.yml、签名清单 desktop-update.json、完整对应源码 ZIP。CI 安装器为 312,224,383 字节，构建环境和时间不同，不能使用本地安装器的哈希核验 CI 资产；应核对该发布自己的签名清单。
+
+发布后实际启动本地打包应用，通过中文更新窗口连接线上 GitHub Release；内置公钥接受 CI 生成的签名清单，正确显示“当前已是最新稳定版”。没有下载或安装到用户目录。证据：`test-results/published-update.json`、`published-update.png`。可用 `node scripts/check-published-update.cjs` 复验。
+
+本轮未在用户真实安装中执行 0.1.0→0.2.0 的静默覆盖安装，也没有声称验证了安装器完成后的系统重启行为。真实测试下载器的安装交接被拦截；用户需手动覆盖安装一次 0.2.0 才能获得后续应用内更新入口。下方 0.1.0 安装器大小及哈希仅对应旧版。
 
 ## 0.1.0 历史验证
 
