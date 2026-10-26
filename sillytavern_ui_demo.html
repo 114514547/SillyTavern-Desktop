@@ -1,0 +1,1954 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SillyTavern Desktop - 全局 UI 现代化重构交互原型</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    :root {
+      --bg-base: #0e0e11;
+      --bg-panel: #141418;
+      --bg-card: #1c1c24;
+      --bg-hover: #262632;
+      --bg-input: #121216;
+      --border: #282834;
+      --border-subtle: #1e1e28;
+      --accent-gold: #c9a76b;
+      --accent-gold-hover: #dfbc7e;
+      --accent-gold-glow: rgba(201, 167, 107, 0.22);
+      --text-main: #e2e2e8;
+      --text-muted: #8b8b9a;
+      --text-dim: #606070;
+      --danger: #fb7185;
+      --success: #34d399;
+    }
+    body {
+      background-color: #0b0b0e;
+      background-image: 
+        radial-gradient(ellipse 90% 50% at 50% -15%, rgba(201, 167, 107, 0.08), transparent 75%),
+        radial-gradient(circle at 100% 100%, rgba(56, 189, 248, 0.03), transparent 45%),
+        radial-gradient(circle at 0% 100%, rgba(201, 167, 107, 0.03), transparent 45%);
+      color: var(--text-main);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      user-select: none;
+      overflow: hidden;
+    }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #262634; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3c3c4e; }
+
+    .view-pane { display: none; height: 100%; width: 100%; }
+    .view-pane.active { display: flex; }
+
+    /* ========================================================== */
+    /* 方向一：Linear / Raycast 级天鹅绒暗黑玻璃微光 (Velvet Glass)  */
+    /* ========================================================== */
+    .velvet-card {
+      background: linear-gradient(180deg, rgba(28, 28, 36, 0.72) 0%, rgba(18, 18, 24, 0.88) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.09), 0 8px 24px rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .velvet-card:hover {
+      border-color: rgba(201, 167, 107, 0.4);
+      box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.14), 0 14px 34px rgba(0, 0, 0, 0.65), 0 0 24px rgba(201, 167, 107, 0.1);
+    }
+    .velvet-header {
+      background: linear-gradient(180deg, rgba(26, 26, 34, 0.94) 0%, rgba(18, 18, 24, 0.88) 100%);
+      box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.08), 0 2px 10px rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+    }
+    .glass-dock {
+      background: linear-gradient(180deg, rgba(26, 26, 34, 0.88) 0%, rgba(16, 16, 22, 0.96) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.1), 0 20px 45px -10px rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+    }
+    .velvet-canvas {
+      background: linear-gradient(180deg, rgba(22, 22, 28, 0.95) 0%, rgba(16, 16, 22, 0.98) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.08), 0 25px 60px -15px rgba(0, 0, 0, 0.9);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+    }
+
+    /* 上下文右键菜单 */
+    #custom-context-menu {
+      position: fixed;
+      z-index: 9999;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.8), 0 0 0 1px rgba(201,167,107,0.15);
+      min-width: 150px;
+      padding: 4px;
+    }
+
+    /* 悬浮删除按钮渐显 */
+    .tree-row .row-action-btn {
+      opacity: 0;
+      transition: opacity 0.15s ease, color 0.15s ease;
+    }
+    .tree-row:hover .row-action-btn {
+      opacity: 0.75;
+    }
+    .tree-row .row-action-btn:hover {
+      opacity: 1 !important;
+      color: var(--danger) !important;
+      background-color: rgba(251, 113, 133, 0.15) !important;
+    }
+
+    /* 模态弹窗动画 */
+    .modal-backdrop {
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      transition: all 0.2s ease-out;
+    }
+    .modal-card {
+      box-shadow: 0 25px 70px -15px rgba(0, 0, 0, 0.95), 0 0 0 1px rgba(255, 255, 255, 0.08), inset 0 1px 0 0 rgba(255, 255, 255, 0.12);
+      animation: modalPop 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes modalPop {
+      0% { opacity: 0; transform: scale(0.97) translateY(8px); }
+      100% { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    /* ========================================================== */
+    /* 方向四：拖拽分割器与磁吸吸附光波 (Magnetic Resizers)        */
+    /* ========================================================== */
+    .resizer-col {
+      width: 6px;
+      cursor: col-resize;
+      background: transparent;
+      transition: background 0.15s ease, box-shadow 0.15s ease;
+      position: relative;
+      z-index: 35;
+      flex-shrink: 0;
+      user-select: none;
+    }
+    .resizer-col:hover, .resizer-col.resizing {
+      background: var(--accent-gold);
+      box-shadow: 0 0 10px var(--accent-gold), 0 0 20px rgba(201, 167, 107, 0.4);
+    }
+    .resizer-col::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 2px;
+      height: 26px;
+      border-radius: 9999px;
+      background: rgba(255, 255, 255, 0.22);
+      pointer-events: none;
+      transition: all 0.15s;
+    }
+    .resizer-col:hover::after, .resizer-col.resizing::after {
+      background: #000;
+      height: 36px;
+      box-shadow: 0 0 6px rgba(0, 0, 0, 0.8);
+    }
+
+    .resizer-row {
+      height: 6px;
+      cursor: row-resize;
+      background: transparent;
+      transition: background 0.15s ease, box-shadow 0.15s ease;
+      position: relative;
+      z-index: 35;
+      flex-shrink: 0;
+      user-select: none;
+    }
+    .resizer-row:hover, .resizer-row.resizing {
+      background: var(--accent-gold);
+      box-shadow: 0 0 10px var(--accent-gold), 0 0 20px rgba(201, 167, 107, 0.4);
+    }
+    .resizer-row::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 32px;
+      height: 2px;
+      border-radius: 9999px;
+      background: rgba(255, 255, 255, 0.22);
+      pointer-events: none;
+      transition: all 0.15s;
+    }
+    .resizer-row:hover::after, .resizer-row.resizing::after {
+      background: #000;
+      width: 48px;
+      box-shadow: 0 0 6px rgba(0, 0, 0, 0.8);
+    }
+
+    /* 磁吸吸附动效波纹 */
+    @keyframes magneticPulse {
+      0% { box-shadow: 0 0 0 0 rgba(201, 167, 107, 0.9); }
+      70% { box-shadow: 0 0 0 12px rgba(201, 167, 107, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(201, 167, 107, 0); }
+    }
+    .resizer-snap-pulse {
+      animation: magneticPulse 0.45s ease-out;
+    }
+  </style>
+</head>
+<body class="h-screen w-screen flex flex-col antialiased">
+
+  <!-- 浮动实时尺寸与磁吸标尺 HUD (Direction 4: Magnetic Snap & HUD Tooltip) -->
+  <div id="drag-hud-badge" class="fixed pointer-events-none z-[99999] px-3 py-1 rounded-full bg-[rgba(15,15,22,0.92)] border border-[var(--accent-gold)] text-[var(--accent-gold)] text-[11px] font-mono shadow-[0_10px_30px_rgba(0,0,0,0.85)] backdrop-blur-md transition-opacity duration-150 flex items-center gap-1.5 opacity-0 select-none">
+    <span class="w-1.5 h-1.5 rounded-full bg-[var(--accent-gold)] animate-ping"></span>
+    <span id="drag-hud-text">340px · 45%</span>
+  </div>
+
+  <!-- ================= 1. 顶部全局集成标题栏 (VS Code 风格 · Velvet Glass) ================= -->
+  <header class="h-10 velvet-header border-b border-[var(--border)] flex items-center justify-between px-3 z-50 flex-shrink-0">
+    <div class="flex items-center gap-3">
+      <!-- 品牌微标 -->
+      <div class="flex items-center gap-1.5 font-bold text-xs tracking-wider text-[var(--accent-gold)]">
+        <span class="w-2 h-2 rounded-full bg-[var(--accent-gold)] animate-pulse shadow-[0_0_8px_rgba(201,167,107,0.8)]"></span>
+        <span>ST DESKTOP</span>
+      </div>
+
+      <!-- 模式分段导航药丸 (Segmented Pill) -->
+      <nav class="flex items-center bg-[var(--bg-base)] p-0.5 rounded-lg border border-[var(--border)] text-xs">
+        <button id="btn-mode-writing" onclick="switchMode('writing')" class="px-2.5 py-1 rounded-md font-medium transition-all text-[var(--text-muted)] hover:text-[var(--text-main)]">
+          ✍️ 小说写作
+        </button>
+        <button id="btn-mode-rp" onclick="switchMode('rp')" class="px-2.5 py-1 rounded-md font-medium transition-all text-[var(--text-muted)] hover:text-[var(--text-main)]">
+          🎭 角色扮演 (现代重构)
+        </button>
+        <button id="btn-mode-agent" onclick="switchMode('agent')" class="px-2.5 py-1 rounded-md font-medium transition-all bg-[var(--bg-card)] text-[var(--accent-gold)] shadow-sm">
+          🤖 本地工作区
+        </button>
+      </nav>
+
+      <!-- 动态上下文面包屑 -->
+      <div id="header-context-title" class="text-xs text-[var(--text-muted)] border-l border-[var(--border)] pl-3 flex items-center gap-1.5 max-w-[320px] truncate">
+        <span class="text-[var(--accent-gold)] font-medium">📁 A4_埃森马克</span>
+        <span class="opacity-40">/</span>
+        <span class="text-[var(--text-main)] opacity-90">梳理这个系列的资料结构</span>
+      </div>
+    </div>
+
+    <!-- 右侧系统工具 -->
+    <div class="flex items-center gap-2 text-xs">
+      <!-- 现代化创新：全局命令罗盘 (Ctrl+K) -->
+      <button onclick="openCommandPalette()" class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[var(--bg-input)] border border-[var(--border)] hover:border-[var(--accent-gold)] text-[var(--text-muted)] hover:text-white transition-all text-xs group" title="打开全局命令罗盘 (快捷键: Ctrl+K)">
+        <svg class="w-3.5 h-3.5 text-[var(--accent-gold)] group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+        <span class="font-medium">命令罗盘</span>
+        <kbd class="px-1.5 py-0.2 rounded bg-[var(--bg-card)] border border-[var(--border)] text-[10px] font-mono text-[var(--accent-gold)]">Ctrl+K</kbd>
+      </button>
+
+      <!-- 当前模型指示 -->
+      <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text-muted)]">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+        <span id="header-model-badge" class="text-[var(--accent-gold)] font-mono text-[11px]">DeepSeek-V4-Flash</span>
+      </div>
+
+      <!-- 重点：酒馆设置大面板呼出按钮 -->
+      <button onclick="openSettingsModal()" class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--accent-gold)] text-[var(--text-main)] transition-colors hover:text-[var(--accent-gold)]">
+        <svg class="w-3.5 h-3.5 text-[var(--accent-gold)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+        <span class="font-medium">酒馆设置</span>
+      </button>
+
+      <button class="px-2 py-1 text-[var(--text-muted)] hover:text-white">🗖</button>
+      <button class="px-2 py-1 text-[var(--text-muted)] hover:text-white">✕</button>
+    </div>
+  </header>
+
+  <!-- ================= 主视图容器 ================= -->
+  <main class="flex-1 min-h-0 relative overflow-hidden">
+
+    <!-- ============================================== -->
+    <!-- 视图 1：本地设定工作区 (重点解决：红框拥挤/黄框空虚、删除入口) -->
+    <!-- ============================================== -->
+    <section id="pane-agent" class="view-pane active">
+      <!-- 左栏：项目与讨论树状目录 (可拖拽宽度) -->
+      <aside id="agent-left-col" class="w-60 bg-[var(--bg-panel)] border-r border-[var(--border)] flex flex-col flex-shrink-0">
+        <!-- 侧栏头部 -->
+        <div class="h-10 px-3 border-b border-[var(--border-subtle)] flex items-center justify-between">
+          <span class="text-[11px] font-bold text-[var(--text-muted)] tracking-wider uppercase">项目与讨论</span>
+          <div class="flex items-center gap-1">
+            <button onclick="addDiscussionMock()" title="新建讨论" class="w-6 h-6 flex items-center justify-center rounded hover:bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-white text-xs">＋</button>
+            <button title="关联本地文件夹" class="w-6 h-6 flex items-center justify-center rounded hover:bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-white text-xs">📁</button>
+            <button title="收起侧栏" class="w-6 h-6 flex items-center justify-center rounded hover:bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-white text-xs">«</button>
+          </div>
+        </div>
+
+        <!-- 讨论与项目列表 (带常显/Hover删除图标与右键事件) -->
+        <div class="flex-1 overflow-y-auto p-2 space-y-1 text-xs" id="agent-tree-list">
+          <!-- 独立讨论 -->
+          <div class="tree-row flex items-center justify-between p-1.5 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] cursor-pointer">
+            <span class="flex items-center gap-1.5 truncate">☁ 独立讨论</span>
+          </div>
+
+          <!-- A5_设想 -->
+          <div class="tree-row flex items-center justify-between p-1.5 rounded hover:bg-[var(--bg-hover)] text-[var(--text-main)] cursor-pointer group">
+            <span class="flex items-center gap-1.5 truncate">📂 A5_设想</span>
+            <button onclick="confirmRemoveSeries('A5_设想')" class="row-action-btn w-5 h-5 rounded flex items-center justify-center text-[var(--text-dim)]" title="移除系列绑定">✕</button>
+          </div>
+
+          <!-- A4_埃森马克 (激活态) -->
+          <div class="space-y-0.5">
+            <div class="tree-row flex items-center justify-between p-1.5 rounded bg-[var(--bg-card)] border border-[rgba(201,167,107,0.35)] text-[var(--accent-gold)] font-medium cursor-pointer">
+              <span class="flex items-center gap-1.5 truncate">📂 A4_埃森马克</span>
+              <button onclick="confirmRemoveSeries('A4_埃森马克')" class="row-action-btn w-5 h-5 rounded flex items-center justify-center text-[var(--text-dim)]" title="移除系列绑定">✕</button>
+            </div>
+
+            <!-- 子讨论列表 (带删除垃圾桶 🗑️ 与右键响应) -->
+            <div class="ml-3 pl-2.5 border-l border-white/10 space-y-0.5 pt-0.5">
+              <div oncontextmenu="showContextMenu(event, '梳理这个系列的资料结构')" class="tree-row flex items-center justify-between py-1.5 px-2 rounded bg-[rgba(201,167,107,0.12)] border-l-2 border-[var(--accent-gold)] text-[var(--accent-gold)] font-medium cursor-pointer">
+                <span class="truncate">💭 梳理这个系列的资料结构</span>
+                <button onclick="confirmDeleteThread('梳理这个系列的资料结构')" class="row-action-btn w-5 h-5 rounded flex items-center justify-center text-[var(--text-muted)]" title="删除此讨论 (支持右键)">🗑️</button>
+              </div>
+
+              <div oncontextmenu="showContextMenu(event, '人物动机梳理与矛盾审查')" class="tree-row flex items-center justify-between py-1.5 px-2 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-white cursor-pointer">
+                <span class="truncate">💭 人物动机梳理与矛盾审查</span>
+                <button onclick="confirmDeleteThread('人物动机梳理与矛盾审查')" class="row-action-btn w-5 h-5 rounded flex items-center justify-center text-[var(--text-muted)]" title="删除此讨论 (支持右键)">🗑️</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="p-2 border-t border-[var(--border-subtle)] text-[10px] text-[var(--text-dim)] text-center">
+          提示：条目支持鼠标悬浮删除与鼠标右键菜单
+        </div>
+      </aside>
+
+      <!-- 垂直分栏拖拽条 (Obsidian / VS Code 同款) -->
+      <div id="agent-resizer-left" class="resizer-col" title="左右拖动调整项目树宽度"></div>
+
+      <!-- 中间：设定讨论流 + 完美平衡的 Omni-Dock 现代输入坞 -->
+      <div id="agent-center-col" class="flex-1 flex flex-col min-w-0 bg-[var(--bg-base)]">
+        <!-- 对话展示区 -->
+        <div class="flex-1 overflow-y-auto p-6 max-w-3xl mx-auto w-full space-y-4">
+          <!-- 用户消息 -->
+          <div class="p-3.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] shadow-sm">
+            <div class="text-[11px] font-bold text-[var(--accent-gold)] mb-1">你</div>
+            <p class="text-sm text-[var(--text-main)]">梳理这个系列的资料结构，找出人物动机与未填补的暗线。</p>
+          </div>
+
+          <!-- 设定助手回复 -->
+          <div class="border-b border-[var(--border-subtle)] pb-5 space-y-3">
+            <div class="text-xs font-bold text-[var(--text-muted)] flex items-center gap-1.5">
+              <span class="text-[var(--accent-gold)]">✦</span>
+              <span>设定助手</span>
+              <span class="text-[10px] text-emerald-400 font-mono bg-emerald-950/60 px-1.5 py-0.2 rounded">DeepSeek-V4</span>
+            </div>
+
+            <div class="text-sm text-[var(--text-main)] leading-relaxed space-y-2">
+              <p>根据根目录 8 个子目录与 README.md 索引，为你完成该系列设定拓扑梳理：</p>
+              <ul class="list-disc pl-5 space-y-1 text-[13px] text-[var(--text-muted)]">
+                <li><strong class="text-[var(--text-main)]">00_Canon</strong>：编年史与世界法则，明确了第 3 次崩塌前后的因果链条。</li>
+                <li><strong class="text-[var(--text-main)]">01_Audit</strong>：历史人物与动机台账，核心矛盾集中在主角隐匿医师身份的真实原因。</li>
+              </ul>
+            </div>
+
+            <!-- 折叠技术记录徽章 -->
+            <details class="rounded-lg bg-[var(--bg-panel)] border border-[var(--border)] px-3 py-1.5 text-xs">
+              <summary class="font-medium text-[var(--text-muted)] cursor-pointer">⚡ 操作记录 · 已读取 3 份本地文档并比对校验</summary>
+              <div class="pt-2 text-[11px] text-[var(--text-dim)] font-mono space-y-1">
+                <div>▸ 读取：00_Canon/Timeline.md (字符 0–1450)</div>
+                <div>▸ 检索：01_Audit/Characters.md (匹配线人关联网)</div>
+              </div>
+            </details>
+
+            <!-- 操作按钮组 -->
+            <div class="flex items-center gap-2 pt-1">
+              <button class="px-3 py-1 rounded bg-[var(--accent-gold)] text-black font-semibold text-xs hover:bg-[var(--accent-gold-hover)] shadow-sm">
+                ✍️ 采用到当前小说章节
+              </button>
+              <button class="px-3 py-1 rounded bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text-main)] text-xs hover:bg-[var(--bg-hover)]">
+                加入项目摘要草稿
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 重点重构区：彻底解决红框拥挤与黄框空虚的一体化单行紧凑 Omni-Dock · Glass Dock -->
+        <div class="p-4 max-w-3xl mx-auto w-full">
+          <div class="glass-dock rounded-2xl p-3.5 focus-within:border-[var(--accent-gold)] transition-all">
+            <!-- 顶部引文与权限状态微标 -->
+            <div class="flex items-center justify-between text-[11px] text-[var(--text-muted)] pb-2 border-b border-white/5 mb-2">
+              <div class="flex items-center gap-2">
+                <span class="px-1.5 py-0.5 rounded bg-[var(--bg-input)] border border-[var(--border)] text-[var(--accent-gold)]">📄 01_Audit/Characters.md ×</span>
+                <span class="text-[var(--text-dim)]">仅讨论 · 角色卡关 / 世界书关</span>
+              </div>
+              <label class="flex items-center gap-1.5 cursor-pointer text-[var(--text-muted)] hover:text-white">
+                <input type="checkbox" class="accent-[var(--accent-gold)] rounded">
+                <span>允许提出修改建议</span>
+              </label>
+            </div>
+
+            <!-- 输入区域 -->
+            <textarea rows="2" placeholder="讨论设定，或让我查阅、整理文档…… (Enter 发送，Shift+Enter 换行)" class="w-full bg-transparent border-none outline-none resize-none text-sm text-[var(--text-main)] placeholder-[var(--text-dim)]"></textarea>
+
+            <!-- 底部平衡工具栏：左侧紧凑胶囊，右侧操作与发送，完美利用空间 -->
+            <div class="flex items-center justify-between pt-2 border-t border-white/5 text-xs">
+              <!-- 左侧参数与控制胶囊：横向单行紧凑排开 -->
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <button class="px-2 py-1 rounded-full bg-[var(--bg-input)] border border-[var(--border)] text-[var(--accent-gold)] font-mono text-[11px] flex items-center gap-1 hover:border-[var(--accent-gold)]">
+                  <span>● deepseek-flash</span>
+                </button>
+                <select class="px-2 py-1 rounded-full bg-[var(--bg-input)] border border-[var(--border)] text-[var(--text-main)] text-[11px] outline-none">
+                  <option>设定讨论 ▾</option>
+                  <option>大纲审查 ▾</option>
+                  <option>资料萃取 ▾</option>
+                </select>
+                <select class="px-2 py-1 rounded-full bg-[var(--bg-input)] border border-[var(--border)] text-[var(--text-muted)] text-[11px] outline-none">
+                  <option>思考：沿用连接 ▾</option>
+                  <option>思考：强制开启 ▾</option>
+                  <option>思考：关闭 ▾</option>
+                </select>
+                <button class="px-2 py-1 rounded-full bg-[var(--bg-input)] border border-[var(--border)] text-[var(--text-muted)] hover:text-white text-[11px]">
+                  预设与参考
+                </button>
+                <button class="px-2 py-1 rounded-full bg-[var(--bg-input)] border border-[var(--border)] text-[var(--text-muted)] hover:text-white text-[11px]">
+                  + 引用文件
+                </button>
+              </div>
+
+              <!-- 右侧：Token 统计与发送键紧密排布，告别黄框大面积空虚 -->
+              <div class="flex items-center gap-3">
+                <span class="text-[10px] text-[var(--text-dim)] font-mono hidden sm:inline">输入 938 · 缓存命中 768 · 输出 40</span>
+                <button class="px-4 py-1.5 rounded-lg bg-[var(--accent-gold)] text-black font-bold text-xs hover:bg-[var(--accent-gold-hover)] shadow-md flex items-center gap-1">
+                  <span>发送</span>
+                  <span>➔</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 垂直分栏拖拽条 (Obsidian / VS Code 同款) -->
+      <div id="agent-resizer-right" class="resizer-col" title="左右拖动调整本地文档宽度"></div>
+
+      <!-- 右栏：本地文档树 + 实时文档预览窗口 (可左右拖动宽度，内部可上下拖动拼合高度) -->
+      <aside id="agent-right-col" class="w-80 lg:w-[340px] bg-[var(--bg-panel)] border-l border-[var(--border)] flex flex-col flex-shrink-0 select-none overflow-hidden">
+        <!-- 上半区：本地文档目录列表 -->
+        <div id="agent-files-pane" class="flex-1 flex flex-col min-h-[72px] overflow-hidden">
+          <div class="h-10 px-3 border-b border-[var(--border-subtle)] flex items-center justify-between flex-shrink-0 bg-[rgba(20,20,24,0.7)]">
+            <span class="text-[11px] font-bold text-[var(--text-muted)] tracking-wider uppercase">本地文档目录</span>
+            <span class="text-[10px] text-[var(--accent-gold)] font-mono">点击预览</span>
+          </div>
+          <div class="p-2 border-b border-[var(--border-subtle)] flex-shrink-0">
+            <input type="text" placeholder="🔍 筛选文件名…" oninput="filterAgentFiles(this.value)" class="w-full bg-[var(--bg-input)] border border-[var(--border)] rounded px-2.5 py-1 text-xs text-[var(--text-main)] outline-none focus:border-[var(--accent-gold)]">
+          </div>
+          <div class="flex-1 overflow-y-auto p-2 space-y-0.5 text-xs font-mono" id="agent-tree-files">
+            <div onclick="openAgentFilePreview('00_Canon/Timeline.md', '### 编年史总纲 (Timeline.md)\n\n- 0192 年：第三次崩塌爆发，执政官签署《隔离审查令》。\n- 0195 年：特别医疗组进驻三号仓库进行毒理活体实验。\n- 0198 年：码头突发大火，第七实验体下落不明，埃森辞去军医职务。')" class="tree-row flex items-center justify-between p-1.5 rounded hover:bg-[var(--bg-hover)] text-[var(--text-main)] cursor-pointer">
+              <span>📁 00_Canon / Timeline.md</span>
+            </div>
+            <div onclick="openAgentFilePreview('00_Sources/Archive.md', '### 原始资料档案 (Archive.md)\n\n包含执政官公署内部纪要与三号仓库货运单据存根 14 份。')" class="tree-row flex items-center justify-between p-1.5 rounded hover:bg-[var(--bg-hover)] text-[var(--text-main)] cursor-pointer">
+              <span>📁 00_Sources / Archive.md</span>
+            </div>
+            <div onclick="openAgentFilePreview('01_Audit/Characters.md', '### 人物与动机台账 (Characters.md)\n\n- **埃森马克**：前军医/暗线探查者。隐匿原因：三年前火灾中偷换了第七实验体的死亡报告。\n- **克莱尔**：执政官秘书处特别监督官。真实身份：第七实验体遗孤，追查黑曜石印章真相。')" class="tree-row flex items-center justify-between p-1.5 rounded hover:bg-[var(--bg-hover)] text-[var(--accent-gold)] font-medium cursor-pointer bg-[rgba(201,167,107,0.12)] border border-[rgba(201,167,107,0.3)]">
+              <span>📁 01_Audit / Characters.md</span>
+            </div>
+            <div onclick="openAgentFilePreview('02_Visual/Maps.md', '### 场景拓扑与地图 (Maps.md)\n\n苍白之城全域地图、三号仓库剖面草图、特别医师诊所暗格设计图。')" class="tree-row flex items-center justify-between p-1.5 rounded hover:bg-[var(--bg-hover)] text-[var(--text-main)] cursor-pointer">
+              <span>📁 02_Visual / Maps.md</span>
+            </div>
+            <div onclick="openAgentFilePreview('README.md', '### 项目说明与设定总索引 (README.md)\n\n本系列设定集采用严格三轨编目：\n1. 历史事实 (Canon)\n2. 动机台账 (Audit)\n3. 场景图谱 (Visual)\n\n点击右下角按钮可直接引用到讨论。')" class="tree-row flex items-center justify-between p-1.5 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] cursor-pointer group">
+              <span class="text-[var(--text-main)]">📄 README.md</span>
+              <button onclick="event.stopPropagation(); quoteFileToAgent('README.md')" class="row-action-btn w-5 h-5 rounded flex items-center justify-center text-[var(--accent-gold)] hover:bg-[var(--bg-card)]" title="引用到当前问题">＋</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 水平拖拽调节器：上下拖动调整文档列表与下方预览窗口高度 (超大无拘束自由调节) -->
+        <div id="agent-resizer-h-right" class="resizer-row" title="上下拖动调整文档列表与预览窗口高度 (支持拖至接近顶部全高浏览)"></div>
+
+        <!-- 下半区：文档实时预览与对照窗口 (解除 500px 上限，支持全高大视窗浏览) -->
+        <div id="agent-viewer-pane" class="h-80 min-h-[90px] bg-[var(--bg-card)] border-t border-[var(--border)] flex flex-col flex-shrink-0 overflow-hidden">
+          <!-- 预览窗头部 -->
+          <div class="h-8 px-3 border-b border-white/5 bg-[rgba(26,26,32,0.95)] flex items-center justify-between text-[11px] font-bold text-[var(--text-muted)] flex-shrink-0 select-none">
+            <span class="flex items-center gap-1.5 text-[var(--accent-gold)] truncate">
+              <span>📄</span> <span id="agent-viewer-filename">01_Audit/Characters.md</span>
+            </span>
+            <div class="flex items-center gap-1.5">
+              <button onclick="quoteActiveFile()" class="px-2 py-0.5 rounded bg-[var(--bg-input)] border border-[var(--border)] text-[var(--accent-gold)] hover:border-[var(--accent-gold)] text-[10px]">＋ 引用到讨论</button>
+              <button id="btn-agent-viewer-max" onclick="maximizeAgentViewerPane()" class="hover:text-white px-1 font-bold text-xs" title="全高展开/还原预览窗">⤢</button>
+              <button id="btn-agent-viewer-toggle" onclick="toggleAgentViewerPane()" class="hover:text-white px-1 font-bold text-xs" title="折叠/展开预览窗">▾</button>
+              <button onclick="closeAgentViewerPane()" class="hover:text-rose-400 px-1 font-bold text-xs" title="关闭预览">✕</button>
+            </div>
+          </div>
+
+          <!-- 预览窗正文内容 -->
+          <div id="agent-viewer-body" class="flex-1 overflow-y-auto p-3 text-xs leading-relaxed space-y-2 text-[var(--text-main)] font-mono select-text bg-[var(--bg-panel)]">
+            <div class="text-[11px] font-bold text-[var(--accent-gold)] border-b border-white/10 pb-1">
+              ### 人物与动机台账 (Characters.md)
+            </div>
+            <ul class="list-disc pl-4 space-y-1.5 text-[11px] text-[var(--text-muted)]">
+              <li><strong class="text-white">埃森马克</strong>：前军医/暗线探查者。隐匿原因：三年前火灾中偷换了第七实验体的死亡报告。</li>
+              <li><strong class="text-white">克莱尔</strong>：执政官秘书处特别监督官。真实身份：第七实验体遗孤，追查黑曜石印章真相。</li>
+              <li><strong class="text-white">三号仓库守卫</strong>：执政官暗部眼线，已被神经毒剂灭口。</li>
+            </ul>
+          </div>
+
+          <!-- 底部状态条 -->
+          <div class="h-6 px-3 border-t border-white/5 bg-[var(--bg-base)] text-[10px] text-[var(--text-dim)] flex items-center justify-between flex-shrink-0 font-mono">
+            <span>UTF-8 · 1,450 字符</span>
+            <span class="text-emerald-400">只读参考 · 允许局部引用</span>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+
+    <!-- ============================================== -->
+    <!-- 视图 2：角色扮演模式 (全面去原版老旧风格，现代深色沉浸重构) -->
+    <!-- ============================================== -->
+    <section id="pane-rp" class="view-pane">
+      <!-- RP 左侧：现代角色画廊列表 -->
+      <aside class="w-64 bg-[var(--bg-panel)] border-r border-[var(--border)] flex flex-col flex-shrink-0">
+        <div class="h-10 px-3 border-b border-[var(--border-subtle)] flex items-center justify-between">
+          <span class="text-[11px] font-bold text-[var(--text-muted)] tracking-wider uppercase">角色与会话</span>
+          <button class="px-2 py-0.5 rounded bg-[var(--bg-card)] border border-[var(--border)] text-xs text-[var(--accent-gold)] font-medium">＋ 新故事</button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-2 space-y-1">
+          <!-- 角色卡 1：Seraphina (激活) -->
+          <div class="p-2 rounded-xl bg-[var(--bg-card)] border border-[var(--accent-gold)]/40 flex items-center gap-2.5 cursor-pointer">
+            <div class="w-9 h-9 rounded-full bg-gradient-to-tr from-amber-600 to-amber-300 flex items-center justify-center font-bold text-black text-xs flex-shrink-0 shadow">
+              S
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-white truncate">Seraphina</span>
+                <span class="text-[10px] text-[var(--text-dim)] font-mono">19:24</span>
+              </div>
+              <p class="text-[11px] text-[var(--text-muted)] truncate">“若您已经连接好模型，不妨问我点什么……”</p>
+            </div>
+          </div>
+
+          <!-- 角色卡 2：Assistant -->
+          <div class="p-2 rounded-xl hover:bg-[var(--bg-hover)] text-[var(--text-muted)] flex items-center gap-2.5 cursor-pointer">
+            <div class="w-9 h-9 rounded-full bg-stone-800 flex items-center justify-center font-bold text-white text-xs flex-shrink-0">
+              A
+            </div>
+            <div class="flex-1 min-w-0">
+              <span class="text-xs font-medium text-[var(--text-main)] block truncate">通用对练助理</span>
+              <p class="text-[11px] text-[var(--text-dim)] truncate">默认系统角色卡</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="p-2 border-t border-[var(--border-subtle)] text-[11px] text-[var(--text-muted)] flex items-center justify-between">
+          <span>当前身份: <strong class="text-white">User</strong></span>
+          <button class="text-[var(--accent-gold)] hover:underline">切换</button>
+        </div>
+      </aside>
+
+      <!-- RP 中间：沉浸对话舞台 (告别老旧丑陋表格) -->
+      <div class="flex-1 flex flex-col min-w-0 bg-[var(--bg-base)]">
+        <!-- 顶部角色信息与快捷参数指示 -->
+        <div class="h-10 px-4 border-b border-[var(--border)] bg-[var(--bg-panel)] flex items-center justify-between text-xs">
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-white">Seraphina</span>
+            <span class="text-[10px] text-[var(--text-dim)]">· 预设: Default · 模型: DeepSeek-Flash · 世界书: 0</span>
+          </div>
+          <div class="flex items-center gap-2 text-[var(--text-muted)]">
+            <span>温度 0.7</span>
+            <span>· 上下文 32k</span>
+          </div>
+        </div>
+
+        <!-- 聊天气泡流 -->
+        <div class="flex-1 overflow-y-auto p-6 max-w-3xl mx-auto w-full space-y-4">
+          <!-- 助手消息气泡 -->
+          <div class="flex gap-3">
+            <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-amber-600 to-amber-300 flex items-center justify-center font-bold text-black text-xs flex-shrink-0 mt-0.5">S</div>
+            <div class="flex-1 max-w-xl rounded-2xl rounded-tl-sm p-4 bg-[var(--bg-card)] border border-[var(--border)] text-sm leading-relaxed text-[var(--text-main)] space-y-2">
+              <div class="text-[11px] font-semibold text-[var(--accent-gold)]">Seraphina</div>
+              <p>夜风穿过长廊的缝隙。如果您已经通过顶部的统一设置连接好了 API，我们现在随时可以展开任何话题的扮演或对练。</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- RP 底部输入条 -->
+        <div class="p-4 max-w-3xl mx-auto w-full">
+          <div class="rounded-xl bg-[var(--bg-card)] border border-[var(--border)] p-2.5 flex items-end gap-2 shadow-lg">
+            <textarea rows="2" placeholder="与 Seraphina 对话…… (Enter 发送)" class="flex-1 bg-transparent border-none outline-none resize-none text-sm text-white placeholder-[var(--text-dim)]"></textarea>
+            <button class="px-4 py-2 rounded-lg bg-[var(--accent-gold)] text-black font-bold text-xs hover:bg-[var(--accent-gold-hover)]">发送</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- RP 右侧：精简参数控制坞 (收纳原版酒馆右侧堆叠的几十个滑块) -->
+      <aside class="w-64 bg-[var(--bg-panel)] border-l border-[var(--border)] flex flex-col flex-shrink-0 text-xs">
+        <div class="h-10 px-3 border-b border-[var(--border-subtle)] flex items-center justify-between font-bold text-[var(--text-muted)]">
+          <span>生成参数与调节</span>
+          <button class="text-xs text-[var(--text-dim)] hover:text-white">收起</button>
+        </div>
+        <div class="p-3 space-y-4 overflow-y-auto flex-1">
+          <div class="space-y-1.5">
+            <div class="flex justify-between text-[11px]">
+              <span class="text-[var(--text-muted)]">创造力 / 温度 (Temperature)</span>
+              <span class="text-[var(--accent-gold)] font-mono">0.70</span>
+            </div>
+            <input type="range" min="0" max="150" value="70" class="w-full accent-[var(--accent-gold)]">
+          </div>
+
+          <div class="space-y-1.5">
+            <div class="flex justify-between text-[11px]">
+              <span class="text-[var(--text-muted)]">最大回复长度 (Tokens)</span>
+              <span class="text-[var(--accent-gold)] font-mono">500</span>
+            </div>
+            <input type="range" min="100" max="2000" value="500" class="w-full accent-[var(--accent-gold)]">
+          </div>
+
+          <div class="pt-2 border-t border-[var(--border-subtle)] space-y-2">
+            <span class="font-bold text-[11px] text-[var(--text-muted)] block">对练辅助开关</span>
+            <label class="flex items-center gap-2 text-[var(--text-main)] cursor-pointer">
+              <input type="checkbox" checked class="accent-[var(--accent-gold)]">
+              <span>流式传输打字机动效</span>
+            </label>
+            <label class="flex items-center gap-2 text-[var(--text-main)] cursor-pointer">
+              <input type="checkbox" checked class="accent-[var(--accent-gold)]">
+              <span>请求思维链 / 深度思考</span>
+            </label>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <!-- ============================================== -->
+    <!-- 视图 3：小说写作 (沉浸式全功能写作工作台)           -->
+    <!-- ============================================== -->
+    <section id="pane-writing" class="view-pane">
+      <!-- 小说左栏：卷与章节目录 + 剧情张力心电图 (可拖拽宽度) -->
+      <aside id="novel-left-col" class="w-60 bg-[var(--bg-panel)] border-r border-[var(--border)] flex flex-col flex-shrink-0 text-xs select-none">
+        <div class="h-10 px-3 border-b border-[var(--border-subtle)] flex items-center justify-between">
+          <span class="font-bold text-[var(--text-muted)] tracking-wider uppercase text-[11px]">章节与大纲</span>
+          <button onclick="alert('已创建新章节草案：第15章')" class="px-2 py-0.5 rounded bg-[var(--bg-card)] border border-[var(--border)] text-[var(--accent-gold)] font-medium hover:border-[var(--accent-gold)]">＋ 新章节</button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-2 space-y-1">
+          <!-- 卷一 -->
+          <div class="text-[10px] text-[var(--text-dim)] font-bold uppercase tracking-wider px-2 pt-1 pb-0.5">卷一 · 苍白之城</div>
+          
+          <div class="tree-row flex items-center justify-between p-2 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] cursor-pointer">
+            <div class="flex items-center gap-2 truncate">
+              <span>📄</span>
+              <span class="truncate">第12章 雾中的信使</span>
+            </div>
+            <span class="text-[10px] text-[var(--text-dim)] font-mono">3,120字</span>
+          </div>
+
+          <div class="tree-row flex items-center justify-between p-2 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] cursor-pointer">
+            <div class="flex items-center gap-2 truncate">
+              <span>📄</span>
+              <span class="truncate">第13章 钟表商的假账</span>
+            </div>
+            <span class="text-[10px] text-[var(--text-dim)] font-mono">4,200字</span>
+          </div>
+
+          <!-- 第14章 (正在编辑 · 激活态) -->
+          <div class="tree-row flex items-center justify-between p-2 rounded bg-[var(--bg-card)] border border-[var(--accent-gold)]/40 text-[var(--accent-gold)] font-medium cursor-pointer shadow-sm">
+            <div class="flex items-center gap-2 truncate">
+              <span>📖</span>
+              <span class="truncate font-bold">第14章 逆光交锋</span>
+            </div>
+            <span class="text-[10px] text-emerald-400 font-mono">正在编辑</span>
+          </div>
+
+          <div class="tree-row flex items-center justify-between p-2 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] cursor-pointer">
+            <div class="flex items-center gap-2 truncate">
+              <span>📝</span>
+              <span class="truncate">第15章 锈蚀的回忆录</span>
+            </div>
+            <span class="text-[10px] text-[var(--text-dim)] font-mono">草案</span>
+          </div>
+        </div>
+
+        <!-- 剧情张力心电图 (Tension Curve Mini-Widget) -->
+        <div class="p-3 border-t border-[var(--border-subtle)] bg-[rgba(18,18,22,0.5)]">
+          <div class="flex items-center justify-between mb-1.5 text-[11px]">
+            <span class="text-[var(--text-muted)] font-medium">剧情张力心电图</span>
+            <span class="text-[var(--accent-gold)] font-mono text-[10px]">第14章：高潮前夜 (82%)</span>
+          </div>
+          <!-- SVG 心电曲线 -->
+          <div class="h-14 w-full bg-[var(--bg-input)] rounded border border-[var(--border)] relative overflow-hidden flex items-end px-1 pb-1">
+            <svg class="w-full h-full" viewBox="0 0 200 50" preserveAspectRatio="none">
+              <path d="M 0,40 Q 30,35 60,30 T 110,18 T 160,8 T 200,25" fill="none" stroke="rgba(201,167,107,0.4)" stroke-width="2"></path>
+              <path d="M 0,40 Q 30,35 60,30 T 110,18" fill="none" stroke="var(--accent-gold)" stroke-width="2"></path>
+              <circle cx="110" cy="18" r="4" fill="var(--accent-gold)" class="animate-ping opacity-75"></circle>
+              <circle cx="110" cy="18" r="3" fill="#fff"></circle>
+            </svg>
+            <div class="absolute bottom-1 right-2 text-[9px] text-[var(--text-dim)] font-mono">爆发临界点</div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- 垂直分栏拖拽条：左栏宽度调节 (Obsidian 同款 col-resize) -->
+      <div id="novel-resizer-left" class="resizer-col" title="左右拖动调整章节大纲宽度 (Obsidian 同款)"></div>
+
+      <!-- 小说中间栏：沉浸式正文稿纸画布 + 智能推演四选一 -->
+      <div id="novel-center-col" class="flex-1 flex flex-col min-w-0 bg-[var(--bg-base)]">
+        <!-- 顶部工具条：章节元数据 + 彻底解决遮挡的右上角字数统计 -->
+        <div class="h-11 px-6 border-b border-[var(--border)] bg-[var(--bg-panel)] flex items-center justify-between text-xs flex-shrink-0">
+          <div class="flex items-center gap-3">
+            <span class="font-bold text-white text-sm">《星穹余晖》· 第14章 逆光交锋</span>
+            <span class="px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-800/40 text-emerald-400 text-[10px]">已自动保存</span>
+          </div>
+
+          <!-- 右上角优雅清晰的统计面板（与操作按钮分离，零遮挡） -->
+          <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2 px-3 py-1 rounded-md bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text-muted)] text-[11px]">
+              <span id="novel-word-count" class="font-mono text-white font-bold">2,840</span>
+              <span>字</span>
+              <span class="opacity-40">|</span>
+              <span>预计阅读 7 分钟</span>
+            </div>
+
+            <!-- AI 辅助工具按钮组 -->
+            <button onclick="triggerWritingAI('continue')" class="px-2.5 py-1 rounded bg-[var(--accent-gold)] text-black font-semibold text-xs hover:bg-[var(--accent-gold-hover)] shadow-sm flex items-center gap-1">
+              <span>⚡ AI 续写</span>
+            </button>
+            <button onclick="triggerWritingAI('polish')" class="px-2.5 py-1 rounded bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text-main)] text-xs hover:bg-[var(--bg-hover)]">
+              🪄 润色
+            </button>
+          </div>
+        </div>
+
+        <!-- 正文画布滚动漫游区 -->
+        <div class="flex-1 overflow-y-auto p-8 flex justify-center">
+          <div class="max-w-2xl w-full space-y-6">
+            
+            <!-- 正文仿真排版区 (支持直接输入、阅读、划词 · Velvet Canvas) -->
+            <article id="writing-prose-content" class="velvet-canvas rounded-2xl p-8 text-[15px] leading-8 text-[var(--text-main)] space-y-5 font-serif select-text relative">
+              
+              <!-- 划词悬浮菜单 (Floating Action Bar 示意) -->
+              <div class="absolute -top-4 right-8 bg-[rgba(26,26,34,0.92)] border border-[var(--accent-gold)]/60 rounded-lg shadow-xl px-2 py-1 flex items-center gap-2 text-xs font-sans backdrop-blur-md">
+                <span class="text-[var(--accent-gold)] text-[11px] font-bold">划选段落:</span>
+                <button onclick="alert('已为该段落增强嗅觉与环境张力描写')" class="px-1.5 py-0.5 rounded hover:bg-white/10 text-white">✨ 增强感官</button>
+                <button onclick="alert('已强化两人的潜台词博弈')" class="px-1.5 py-0.5 rounded hover:bg-white/10 text-white">💬 增加潜台词</button>
+                <button onclick="alert('已精简修饰词')" class="px-1.5 py-0.5 rounded hover:bg-white/10 text-white">✂ 精简</button>
+              </div>
+
+              <p class="indent-8 text-stone-200">
+                煤气灯在雨夜里嘶嘶作响，将克莱尔苍白的侧影投在布满水汽的磨砂玻璃上。
+              </p>
+              <p class="indent-8 text-stone-200">
+                “你昨晚去过码头三号仓库，”她没有回头，指尖轻轻敲击着冰冷的黄铜天平，发出令人心悸的清脆颤音，“巡夜警卫在碎木桶底下发现了这枚黑曜石印章。埃森，你欠我一个解释。”
+              </p>
+              <p class="indent-8 text-stone-200">
+                埃森脱下浸透雨水的厚重风衣，随手搭在门边的红木椅背上。壁炉里的松木柴火正发出轻微的噼啪声，空气中弥漫着潮湿的羊毛与微苦的杏仁气味——那是安定剂在高温下轻微挥发的熟悉味道。
+              </p>
+              <p class="indent-8 text-stone-200">
+                “如果我告诉你，那枚印章本来就是冲着我的命来的呢？”埃森拉开抽屉，借着壁炉火光凝视着她，“或者更进一步，昨晚如果我没去，今早躺在冷水解剖台上的就不是三个守卫，而是整个特别医疗组。”
+              </p>
+              <p id="prose-appended-text" class="indent-8 text-amber-200/90 bg-[rgba(201,167,107,0.08)] p-2.5 rounded-lg border-l-2 border-[var(--accent-gold)] hidden transition-all">
+                <!-- 动态插值区域 -->
+              </p>
+            </article>
+
+            <!-- 核心创新：剧情十字路口 (四选一智能推演卡片 · Velvet Glass) -->
+            <!-- 解决用户痛点：不是死板的模板解释词，而是 AI 结合当前剧情讨论给出的动态发展路线 -->
+            <div class="space-y-3 pt-2">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-bold text-[var(--accent-gold)] flex items-center gap-1">
+                    <span>✦</span> 剧情推演十字路口 (基于当前剧情与暗线分析)
+                  </span>
+                  <span class="text-[10px] text-[var(--text-dim)]">点击任意分支即可将其直接写入上方画布</span>
+                </div>
+                <button onclick="refreshCrossroadsMock()" class="text-xs text-[var(--text-muted)] hover:text-white flex items-center gap-1">
+                  <span>🔄 换一批推演</span>
+                </button>
+              </div>
+
+              <!-- 四选一卡片网格 (Velvet Card 天鹅绒微光) -->
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3" id="crossroads-container">
+                <!-- 分支 A: 守序顺行 -->
+                <div onclick="selectCrossroad('A', '埃森深吸一口气，从内衬取出盖有执政官印鉴的医师密令推到天平旁。克莱尔的手指僵在半空，窗外的雨声仿佛在这一瞬被彻底抽空。')" class="velvet-card p-3.5 rounded-xl cursor-pointer hover:translate-y-[-2px] group">
+                  <div class="flex items-center justify-between mb-1.5">
+                    <span class="px-2 py-0.5 rounded bg-amber-950/60 border border-amber-800/40 text-[var(--accent-gold)] font-bold text-[11px]">A · 守序顺行</span>
+                    <span class="text-[10px] text-[var(--text-dim)] group-hover:text-[var(--accent-gold)]">点击写入 ➔</span>
+                  </div>
+                  <p class="text-xs text-[var(--text-main)] leading-relaxed">
+                    埃森选择和盘托出，出示特别医师密令以换取合作。两人的博弈转向理性同盟，共同分析暗杀源头。
+                  </p>
+                </div>
+
+                <!-- 分支 B: 意外断裂 -->
+                <div onclick="selectCrossroad('B', '骤然间，刺耳的蒸汽警笛撕裂了雨夜。长廊外传来密集的军靴踩踏声，搜查队的铁靴径直停在了门外。克莱尔脸色骤变，一把抓起桌上的左轮手枪。')" class="velvet-card p-3.5 rounded-xl cursor-pointer hover:translate-y-[-2px] group">
+                  <div class="flex items-center justify-between mb-1.5">
+                    <span class="px-2 py-0.5 rounded bg-rose-950/60 border border-rose-800/40 text-rose-400 font-bold text-[11px]">B · 意外断裂</span>
+                    <span class="text-[10px] text-[var(--text-dim)] group-hover:text-rose-400">点击写入 ➔</span>
+                  </div>
+                  <p class="text-xs text-[var(--text-main)] leading-relaxed">
+                    搜查队提前破门而入，蒸汽警笛撕裂雨夜。双方未竟的对话被迫中断，转入共同应对外部致命危机的生死协同。
+                  </p>
+                </div>
+
+                <!-- 分支 C: 暗线收束 -->
+                <div onclick="selectCrossroad('C', '克莱尔缓缓解开风衣领扣，露出锁骨下方那道深褐色的咬痕。埃森瞳孔猛然收缩——三年前在那场火灾中被认定死亡的第七实验体，竟然一直就站在自己面前。')" class="velvet-card p-3.5 rounded-xl cursor-pointer hover:translate-y-[-2px] group">
+                  <div class="flex items-center justify-between mb-1.5">
+                    <span class="px-2 py-0.5 rounded bg-sky-950/60 border border-sky-800/40 text-sky-400 font-bold text-[11px]">C · 暗线收束</span>
+                    <span class="text-[10px] text-[var(--text-dim)] group-hover:text-sky-400">点击写入 ➔</span>
+                  </div>
+                  <p class="text-xs text-[var(--text-main)] leading-relaxed">
+                    克莱尔展示出当年实验留下的标记，黑曜石印章竟是她父亲的遗物。个人恩怨与主线阴谋在此刻严密咬合。
+                  </p>
+                </div>
+
+                <!-- 分支 D: 极端反转 -->
+                <div onclick="selectCrossroad('D', '话音未落，克莱尔突然捂住咽喉剧烈咳嗽起来，一滴暗黑的血液从指缝渗出。埃森猛然上前夺过她的茶杯，那股苦杏仁气味不仅来自壁炉，还来自她刚刚咽下的红茶！')" class="velvet-card p-3.5 rounded-xl cursor-pointer hover:translate-y-[-2px] group">
+                  <div class="flex items-center justify-between mb-1.5">
+                    <span class="px-2 py-0.5 rounded bg-purple-950/60 border border-purple-800/40 text-purple-400 font-bold text-[11px]">D · 极端反转</span>
+                    <span class="text-[10px] text-[var(--text-dim)] group-hover:text-purple-400">点击写入 ➔</span>
+                  </div>
+                  <p class="text-xs text-[var(--text-main)] leading-relaxed">
+                    克莱尔突然剧毒发作倒地，苦杏仁味的真正来源是她的茶杯！质问者转瞬成为垂死受害者，埃森必须在三分钟内施救并找出下毒者。
+                  </p>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- 垂直分栏拖拽条：右栏宽度调节 (Obsidian 同款 col-resize) -->
+      <div id="novel-resizer-right" class="resizer-col" title="左右拖动调整右侧工作台宽度 (Obsidian 同款)"></div>
+
+      <!-- 小说右栏：AI 创作讨论副驾 + 场景随身镜 (Obsidian 同款上下双拼合面板) -->
+      <aside id="novel-right-col" class="w-80 lg:w-[360px] bg-[var(--bg-panel)] border-l border-[var(--border)] flex flex-col flex-shrink-0 text-xs overflow-hidden select-none">
+        
+        <!-- 上半区：AI 创作协同讨论流与输入坞 (类似 Obsidian 上方面板，可拖拽高度) -->
+        <div id="novel-right-top-pane" class="flex-1 flex flex-col min-h-[72px] overflow-hidden">
+          
+          <!-- 讨论栏头部 -->
+          <div class="h-10 px-3 border-b border-white/5 flex items-center justify-between bg-[rgba(20,20,24,0.7)] flex-shrink-0">
+            <div class="flex items-center gap-1.5">
+              <span class="text-[var(--accent-gold)] font-bold text-xs flex items-center gap-1.5">
+                <span>💬</span> <span>AI 创作讨论副驾</span>
+              </span>
+              <span class="text-[9px] text-emerald-400 font-mono bg-emerald-950/60 px-1.5 py-0.2 rounded border border-emerald-800/40">双轨就绪</span>
+            </div>
+            <button onclick="addNovelDiscussionTopic()" title="新讨论" class="px-2 py-0.5 rounded bg-[var(--bg-card)] border border-[var(--border)] text-[var(--accent-gold)] hover:border-[var(--accent-gold)] text-[11px]">
+              ＋ 新讨论
+            </button>
+          </div>
+
+          <!-- 讨论流记录 -->
+          <div id="writing-discussion-log" class="flex-1 overflow-y-auto p-3 space-y-3">
+            
+            <!-- 作者消息 -->
+            <div class="p-2.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] text-xs text-[var(--text-main)] space-y-1">
+              <div class="flex items-center justify-between text-[10px] text-[var(--accent-gold)] font-bold">
+                <span>你 (作者)</span>
+                <span class="text-[var(--text-dim)] font-normal">19:42</span>
+              </div>
+              <p class="leading-relaxed">克莱尔怀疑埃森昨晚在码头三号仓库，两人在雨夜壁炉前对峙。帮我写一段充满潜台词的逼问，要突出克莱尔的敏锐和埃森的克制，注意铺垫苦杏仁味。</p>
+            </div>
+
+            <!-- AI 写作副驾回复 -->
+            <div class="p-3 rounded-xl bg-[rgba(201,167,107,0.06)] border border-[var(--accent-gold)]/30 text-xs text-[var(--text-main)] space-y-2">
+              <div class="flex items-center justify-between text-[10px]">
+                <div class="flex items-center gap-1.5 font-bold text-[var(--accent-gold)]">
+                  <span class="animate-pulse">✦</span>
+                  <span>AI 写作副驾</span>
+                  <span class="text-[9px] text-emerald-400 font-mono bg-emerald-950/60 px-1 rounded">DeepSeek-V4</span>
+                </div>
+                <span class="text-[var(--text-dim)]">19:43</span>
+              </div>
+
+              <p class="text-[11px] leading-relaxed text-stone-300">
+                已深入参考本地设定库《01_Audit/Characters.md》：通过天平颤音放大压迫感，并借壁炉高温挥发安定剂自然铺设苦杏仁味毒剂暗线。
+              </p>
+
+              <!-- 直落画布成功微标 -->
+              <div class="p-2.5 rounded-lg bg-[var(--bg-base)] border border-emerald-500/30 text-emerald-300 text-xs flex items-center justify-between shadow-inner">
+                <div class="flex items-center gap-1.5 font-medium">
+                  <span>✅</span>
+                  <span>对峙正文已为您直接写入中间画布！</span>
+                </div>
+                <span class="text-[10px] text-emerald-400 font-mono">+380 字</span>
+              </div>
+
+              <div class="pt-1 text-[11px] text-[var(--text-muted)] flex items-center justify-between">
+                <span>已联动生成剧情十字路口 4 条分支</span>
+                <span class="text-[var(--accent-gold)] text-[10px]">见画布下方 ▾</span>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- 水平拖拽调节器：上下拖动调整讨论气泡与输入坞高度 (红箭头所在位置 · Obsidian 同款 row-resize) -->
+          <div id="novel-composer-resizer" class="resizer-row" title="上下拖动调整讨论气泡与输入坞高度 (Obsidian 同款 row-resize)"></div>
+
+          <!-- AI 讨论输入坞 (可拖拽自由调整高度 · Velvet Glass) -->
+          <div id="novel-composer-pane" style="height: 145px; min-height: 95px; max-height: 480px;" class="p-2.5 velvet-header border-t border-[var(--border)] flex flex-col flex-shrink-0 space-y-1.5 overflow-hidden">
+            <div class="flex items-center justify-between text-[10px] text-[var(--text-dim)] flex-shrink-0">
+              <div class="flex items-center gap-1.5">
+                <span class="px-1.5 py-0.2 rounded bg-[var(--bg-input)] border border-[var(--border)] text-[var(--accent-gold)]">📄 01_Audit/Characters.md</span>
+                <span>· 设定协同</span>
+              </div>
+              <span class="font-mono">Enter 发送</span>
+            </div>
+
+            <div class="flex-1 flex flex-col rounded-xl bg-[var(--bg-input)] border border-[var(--border)] focus-within:border-[var(--accent-gold)] transition-colors p-2 shadow-inner min-h-0">
+              <textarea id="novel-ai-chat-input" placeholder="与 AI 讨论剧情、人物动机，或输入「写一段搜查队敲门」…" class="w-full flex-1 bg-transparent border-none outline-none resize-none text-xs text-white placeholder-[var(--text-dim)] leading-relaxed"></textarea>
+              <div class="flex items-center justify-between pt-1.5 border-t border-white/5 flex-shrink-0">
+                <div class="flex items-center gap-1">
+                  <button onclick="quickDiscussionPrompt('请帮我把下一段搜查队破门的紧急危局写出来，直接插入正文')" class="px-2 py-0.5 rounded bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--accent-gold)] text-[10px] text-[var(--text-muted)] hover:text-white" title="让 AI 直接撰写下一段">
+                    ⚡ 写下一段
+                  </button>
+                  <button onclick="quickDiscussionPrompt('针对当前对峙，推演 4 组完全不同的戏剧分歧点')" class="px-2 py-0.5 rounded bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--accent-gold)] text-[10px] text-[var(--text-muted)] hover:text-white" title="召唤剧情十字路口">
+                    🎯 召唤推演
+                  </button>
+                </div>
+                <button onclick="sendNovelDiscussion()" class="px-3.5 py-1 rounded-md bg-[var(--accent-gold)] text-black font-bold text-xs hover:bg-[var(--accent-gold-hover)] shadow-sm flex items-center gap-1">
+                  <span>发送</span>
+                  <span>➔</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 水平拖拽调节器 (Obsidian 同款上下分屏 row-resize，超大无拘束自由调节) -->
+        <div id="novel-resizer-h-right" class="resizer-row" title="上下拖动调整讨论区与随身镜高度 (支持拖至接近顶部全高浏览 · 本地工作区同款)"></div>
+
+        <!-- 下半区：场景随身镜与大纲提纲 (解除 500px 限制，与本地工作区同款全高大视窗) -->
+        <div id="novel-right-bottom-pane" class="h-80 min-h-[90px] bg-[var(--bg-card)] border-t border-[var(--border)] flex flex-col flex-shrink-0 overflow-hidden">
+          <div class="h-8 px-3 border-b border-white/5 bg-[rgba(26,26,32,0.9)] flex items-center justify-between text-[11px] font-bold text-[var(--text-muted)] flex-shrink-0 select-none">
+            <span class="flex items-center gap-1.5 text-[var(--accent-gold)] truncate cursor-pointer" onclick="toggleNovelBottomPane()">
+              <span>🔍</span> <span>场景随身镜与提纲 (Obsidian 拼合小窗)</span>
+            </span>
+            <div class="flex items-center gap-1.5 text-[10px]">
+              <span class="text-emerald-400 font-mono">张力 82%</span>
+              <button id="btn-novel-bottom-max" onclick="maximizeNovelBottomPane()" class="hover:text-white px-1 font-bold text-xs" title="全高展开/还原随身镜">⤢</button>
+              <button id="btn-novel-bottom-toggle" onclick="toggleNovelBottomPane()" class="hover:text-white px-1 font-bold text-xs" title="折叠/展开随身镜">▾</button>
+            </div>
+          </div>
+
+          <div id="novel-bottom-pane-content" class="flex-1 overflow-y-auto p-3 space-y-3.5">
+            <!-- 在场角色卡片 -->
+            <div class="space-y-1.5">
+              <span class="font-bold text-[10px] text-[var(--text-muted)] uppercase tracking-wider block">在场角色与动机</span>
+              <div class="p-2 rounded-lg bg-[var(--bg-panel)] border border-[var(--border)] space-y-1">
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-white text-[11px]">埃森马克</span>
+                  <span class="text-[10px] text-amber-400">戒备 · 心率 92</span>
+                </div>
+                <p class="text-[10px] text-[var(--text-dim)]">身份隐匿者 / 随身携带银制止血钳与解毒剂</p>
+              </div>
+              <div class="p-2 rounded-lg bg-[var(--bg-panel)] border border-[var(--border)] space-y-1">
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-white text-[11px]">克莱尔</span>
+                  <span class="text-[10px] text-rose-400">质询 · 怀疑度 78%</span>
+                </div>
+                <p class="text-[10px] text-[var(--text-dim)]">执政官秘书处特派监督官 / 持有三号仓库搜查权</p>
+              </div>
+            </div>
+
+            <!-- 感官调色盘 (Sensory Mixer) -->
+            <div class="space-y-1.5">
+              <span class="font-bold text-[10px] text-[var(--text-muted)] uppercase tracking-wider block">场面五感调色盘</span>
+              <div class="space-y-1 text-[11px] bg-[var(--bg-panel)] p-2 rounded-lg border border-[var(--border)]">
+                <div class="flex items-center justify-between py-0.5 border-b border-white/5">
+                  <span class="text-[var(--text-muted)]">🦻 听觉</span>
+                  <span class="text-[var(--text-main)] text-[10px]">雨打磨砂窗、壁炉松木声</span>
+                </div>
+                <div class="flex items-center justify-between py-0.5 border-b border-white/5">
+                  <span class="text-[var(--text-muted)]">👃 嗅觉</span>
+                  <span class="text-[var(--accent-gold)] text-[10px]">潮湿羊毛、苦杏仁味</span>
+                </div>
+                <div class="flex items-center justify-between py-0.5">
+                  <span class="text-[var(--text-muted)]">👁️ 视觉</span>
+                  <span class="text-[var(--text-main)] text-[10px]">煤气灯昏黄、玻璃水汽水痕</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 伏笔追踪 -->
+            <div class="space-y-1.5">
+              <span class="font-bold text-[10px] text-[var(--text-muted)] uppercase tracking-wider block">本场伏笔核对</span>
+              <div class="space-y-1 bg-[var(--bg-panel)] p-2 rounded-lg border border-[var(--border)]">
+                <label class="flex items-center gap-2 text-[10px] text-[var(--text-muted)] cursor-pointer">
+                  <input type="checkbox" checked class="accent-[var(--accent-gold)]">
+                  <span>黑曜石印章的来源</span>
+                </label>
+                <label class="flex items-center gap-2 text-[10px] text-[var(--text-muted)] cursor-pointer">
+                  <input type="checkbox" checked class="accent-[var(--accent-gold)]">
+                  <span>苦杏仁气味的伏笔铺设</span>
+                </label>
+                <label class="flex items-center gap-2 text-[10px] text-[var(--text-muted)] cursor-pointer">
+                  <input type="checkbox" class="accent-[var(--accent-gold)]">
+                  <span>搜查队何时敲门破入</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </aside>
+    </section>
+
+  </main>
+
+
+  <!-- ========================================================================= -->
+  <!-- 创新：Spotlight / Raycast 风格全局命令罗盘 (Ctrl+K 触发)                    -->
+  <!-- ========================================================================= -->
+  <div id="command-palette-modal" class="hidden fixed inset-0 z-[9999] modal-backdrop flex items-start justify-center pt-20 p-4">
+    <div class="modal-card w-full max-w-xl bg-[var(--bg-panel)] border border-[var(--border)] rounded-2xl flex flex-col overflow-hidden text-sm shadow-2xl">
+      <!-- 搜索框 -->
+      <div class="h-12 px-4 border-b border-[var(--border)] flex items-center gap-3 bg-[rgba(26,26,32,0.8)] flex-shrink-0">
+        <svg class="w-4 h-4 text-[var(--accent-gold)] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+        <input id="command-palette-input" type="text" placeholder="输入命令、搜索章节、切换模型或动作… (Esc 退出)" class="flex-1 bg-transparent border-none outline-none text-white text-sm placeholder-[var(--text-dim)]" autocomplete="off">
+        <kbd class="px-2 py-0.5 rounded bg-[var(--bg-input)] border border-[var(--border)] text-[10px] font-mono text-[var(--text-muted)]">ESC</kbd>
+      </div>
+
+      <!-- 命令列表 -->
+      <div id="command-palette-list" class="max-h-80 overflow-y-auto p-2 space-y-1 text-xs">
+        <div class="text-[10px] font-bold text-[var(--text-dim)] uppercase tracking-wider px-2 pt-1.5 pb-0.5">模式快速切换</div>
+        <div onclick="execPaletteAction('mode-writing')" class="palette-item p-2 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-main)] flex items-center justify-between cursor-pointer group">
+          <div class="flex items-center gap-2"><span>✍️</span> <span class="group-hover:text-[var(--accent-gold)] font-medium">切换到：小说写作工作台</span></div>
+          <span class="text-[10px] text-[var(--text-dim)] font-mono">View</span>
+        </div>
+        <div onclick="execPaletteAction('mode-rp')" class="palette-item p-2 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-main)] flex items-center justify-between cursor-pointer group">
+          <div class="flex items-center gap-2"><span>🎭</span> <span class="group-hover:text-[var(--accent-gold)] font-medium">切换到：角色扮演模式</span></div>
+          <span class="text-[10px] text-[var(--text-dim)] font-mono">View</span>
+        </div>
+        <div onclick="execPaletteAction('mode-agent')" class="palette-item p-2 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-main)] flex items-center justify-between cursor-pointer group">
+          <div class="flex items-center gap-2"><span>🤖</span> <span class="group-hover:text-[var(--accent-gold)] font-medium">切换到：本地工作区</span></div>
+          <span class="text-[10px] text-[var(--text-dim)] font-mono">View</span>
+        </div>
+
+        <div class="text-[10px] font-bold text-[var(--text-dim)] uppercase tracking-wider px-2 pt-2 pb-0.5">模型极速换发</div>
+        <div onclick="execPaletteAction('model-deepseek')" class="palette-item p-2 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-main)] flex items-center justify-between cursor-pointer group">
+          <div class="flex items-center gap-2"><span>🖩</span> <span class="group-hover:text-[var(--accent-gold)] font-medium">切换模型：DeepSeek-V4-Flash</span></div>
+          <span class="text-[10px] text-emerald-400 font-mono">当前首选</span>
+        </div>
+        <div onclick="execPaletteAction('model-claude')" class="palette-item p-2 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-main)] flex items-center justify-between cursor-pointer group">
+          <div class="flex items-center gap-2"><span>🖩</span> <span class="group-hover:text-[var(--accent-gold)] font-medium">切换模型：Claude 3.5 Sonnet</span></div>
+          <span class="text-[10px] text-[var(--text-dim)] font-mono">Anthropic</span>
+        </div>
+        <div onclick="execPaletteAction('model-gpt4o')" class="palette-item p-2 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-main)] flex items-center justify-between cursor-pointer group">
+          <div class="flex items-center gap-2"><span>🖩</span> <span class="group-hover:text-[var(--accent-gold)] font-medium">切换模型：GPT-4o</span></div>
+          <span class="text-[10px] text-[var(--text-dim)] font-mono">OpenAI</span>
+        </div>
+
+        <div class="text-[10px] font-bold text-[var(--text-dim)] uppercase tracking-wider px-2 pt-2 pb-0.5">创作与系统快捷动作</div>
+        <div onclick="execPaletteAction('action-crossroads')" class="palette-item p-2 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-main)] flex items-center justify-between cursor-pointer group">
+          <div class="flex items-center gap-2"><span>🎯</span> <span class="group-hover:text-[var(--accent-gold)] font-medium">召唤剧情十字路口 (四选一)</span></div>
+          <kbd class="text-[10px] text-[var(--accent-gold)] font-mono">Ctrl+J</kbd>
+        </div>
+        <div onclick="execPaletteAction('action-write')" class="palette-item p-2 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-main)] flex items-center justify-between cursor-pointer group">
+          <div class="flex items-center gap-2"><span>⚡</span> <span class="group-hover:text-[var(--accent-gold)] font-medium">AI 智能续写本章接续正文</span></div>
+          <span class="text-[10px] text-[var(--text-dim)] font-mono">Write</span>
+        </div>
+        <div onclick="execPaletteAction('action-settings')" class="palette-item p-2 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-main)] flex items-center justify-between cursor-pointer group">
+          <div class="flex items-center gap-2"><span>⚙️</span> <span class="group-hover:text-[var(--accent-gold)] font-medium">打开酒馆统一控制台 (大面板)</span></div>
+          <kbd class="text-[10px] text-[var(--accent-gold)] font-mono">Ctrl+,</kbd>
+        </div>
+      </div>
+
+      <div class="p-2.5 border-t border-[var(--border)] bg-[rgba(18,18,22,0.8)] text-[11px] text-[var(--text-dim)] flex items-center justify-between px-4">
+        <span>支持 ↑ ↓ 键移动，Enter 执行，Esc 关闭</span>
+        <span class="font-mono text-[var(--accent-gold)]">Command Palette</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- 核心重点重构：DeepSeek Harness 风格「酒馆设置」统一大面板 (图四同款)     -->
+  <!-- ========================================================================= -->
+  <div id="settings-modal" class="hidden fixed inset-0 z-[999] modal-backdrop flex items-center justify-center p-4">
+    <div class="modal-card w-full max-w-4xl h-[620px] bg-[var(--bg-panel)] border border-[var(--border)] rounded-2xl flex flex-col overflow-hidden text-sm">
+      
+      <!-- 模态框顶部 -->
+      <div class="h-12 px-5 border-b border-[var(--border)] flex items-center justify-between flex-shrink-0 bg-[rgba(26,26,32,0.6)]">
+        <div class="flex items-center gap-2 font-bold text-base text-white">
+          <span>设置</span>
+          <span class="text-xs text-[var(--text-dim)] font-normal">SillyTavern Desktop 统一控制台</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <button class="px-2.5 py-1 rounded-md bg-[var(--bg-card)] border border-[var(--border)] text-xs text-[var(--text-muted)] hover:text-white flex items-center gap-1">
+            <span>打开配置文件</span>
+            <span class="text-[10px]">↗</span>
+          </button>
+          <button onclick="closeSettingsModal()" class="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 text-[var(--text-muted)] hover:text-white text-base">✕</button>
+        </div>
+      </div>
+
+      <!-- 模态框主体：左侧分类导航 + 右侧卡片内容区 (1:1 复刻 DeepSeek Harness 布局) -->
+      <div class="flex-1 flex min-h-0">
+        <!-- 左侧设置导航栏 -->
+        <aside class="w-52 bg-[var(--bg-base)] border-r border-[var(--border)] p-2 space-y-1 flex-shrink-0 overflow-y-auto">
+          <button onclick="switchSettingsTab('account')" id="tab-btn-account" class="w-full px-3 py-2 rounded-xl text-left font-medium text-xs flex items-center gap-2.5 bg-[var(--bg-card)] text-[var(--accent-gold)] shadow-sm">
+            <span>👤</span>
+            <span>账号与余额</span>
+          </button>
+          <button onclick="switchSettingsTab('models')" id="tab-btn-models" class="w-full px-3 py-2 rounded-xl text-left font-medium text-xs flex items-center gap-2.5 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-white">
+            <span>🖩</span>
+            <span>模型与 API 连接</span>
+          </button>
+          <button onclick="switchSettingsTab('params')" id="tab-btn-params" class="w-full px-3 py-2 rounded-xl text-left font-medium text-xs flex items-center gap-2.5 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-white">
+            <span>⚙️</span>
+            <span>通用与生成参数</span>
+          </button>
+          <button onclick="switchSettingsTab('presets')" id="tab-btn-presets" class="w-full px-3 py-2 rounded-xl text-left font-medium text-xs flex items-center gap-2.5 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-white">
+            <span>🤖</span>
+            <span>Agent 预设</span>
+          </button>
+          <button onclick="switchSettingsTab('world')" id="tab-btn-world" class="w-full px-3 py-2 rounded-xl text-left font-medium text-xs flex items-center gap-2.5 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-white">
+            <span>📚</span>
+            <span>世界书与专家技能</span>
+          </button>
+          <button onclick="switchSettingsTab('plugins')" id="tab-btn-plugins" class="w-full px-3 py-2 rounded-xl text-left font-medium text-xs flex items-center gap-2.5 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-white">
+            <span>🧩</span>
+            <span>插件与扩展市场</span>
+          </button>
+        </aside>
+
+        <!-- 右侧卡片内容展示区 -->
+        <div class="flex-1 overflow-y-auto p-6 space-y-5 bg-[var(--bg-panel)]">
+          
+          <!-- TAB 1: 账号与余额 (图四核心复刻) -->
+          <div id="settings-tab-account" class="space-y-4">
+            <!-- 账号卡片 -->
+            <div class="p-4 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-[var(--accent-gold)]/20 border border-[var(--accent-gold)]/40 flex items-center justify-center font-bold text-[var(--accent-gold)]">
+                  👤
+                </div>
+                <div>
+                  <div class="font-bold text-white text-sm">已连接 DeepSeek 官方账号</div>
+                  <div class="text-xs text-[var(--text-dim)] font-mono">176******73 · key: sk-72******************</div>
+                </div>
+              </div>
+              <button class="text-xs text-[var(--accent-gold)] hover:underline flex items-center gap-1">
+                <span>管理密钥</span>
+                <span>↗</span>
+              </button>
+            </div>
+
+            <!-- 余额与用量卡片 -->
+            <div class="p-5 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] space-y-4">
+              <div class="flex items-center justify-between">
+                <div>
+                  <span class="text-xs text-[var(--text-muted)] block">充值余额</span>
+                  <span class="text-2xl font-bold font-mono text-white">¥1.60</span>
+                </div>
+                <div class="flex gap-2">
+                  <button class="px-3 py-1.5 rounded-lg bg-[var(--bg-hover)] border border-[var(--border)] text-xs text-[var(--text-main)] hover:text-white">
+                    查询用量
+                  </button>
+                  <button class="px-4 py-1.5 rounded-lg bg-[var(--accent-gold)] text-black font-bold text-xs hover:bg-[var(--accent-gold-hover)]">
+                    充值
+                  </button>
+                </div>
+              </div>
+
+              <div class="pt-3 border-t border-[var(--border-subtle)] flex items-center justify-between text-xs text-[var(--text-dim)]">
+                <span>本月已用 Tokens: <strong class="text-[var(--text-main)] font-mono">245,820</strong></span>
+                <span>缓存命中节省: <strong class="text-emerald-400 font-mono">78.4%</strong></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 2: 模型与 API 连接 -->
+          <div id="settings-tab-models" class="hidden space-y-4 text-xs">
+            <div class="p-4 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] space-y-3">
+              <span class="font-bold text-sm text-white block">API 接口提供商</span>
+              <div class="grid grid-cols-3 gap-2">
+                <button class="p-2.5 rounded-lg bg-[var(--bg-panel)] border-2 border-[var(--accent-gold)] text-left font-bold text-[var(--accent-gold)]">
+                  DeepSeek 官方
+                </button>
+                <button class="p-2.5 rounded-lg bg-[var(--bg-panel)] border border-[var(--border)] text-left text-[var(--text-muted)] hover:text-white">
+                  OpenAI / 代理
+                </button>
+                <button class="p-2.5 rounded-lg bg-[var(--bg-panel)] border border-[var(--border)] text-left text-[var(--text-muted)] hover:text-white">
+                  Anthropic Claude
+                </button>
+              </div>
+
+              <div class="space-y-1.5 pt-2">
+                <span class="text-[var(--text-muted)]">API 密钥 (API Key)</span>
+                <input type="password" value="sk-d89234871923812739" class="w-full bg-[var(--bg-input)] border border-[var(--border)] rounded px-3 py-1.5 font-mono text-[var(--text-main)]">
+              </div>
+
+              <div class="space-y-1.5">
+                <span class="text-[var(--text-muted)]">反向代理端点 (Reverse Proxy)</span>
+                <input type="text" value="https://api.deepseek.com/v1" class="w-full bg-[var(--bg-input)] border border-[var(--border)] rounded px-3 py-1.5 font-mono text-[var(--text-main)]">
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 3: 通用与生成参数 -->
+          <div id="settings-tab-params" class="hidden space-y-4 text-xs">
+            <div class="p-4 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] space-y-3">
+              <span class="font-bold text-sm text-white block">上下文与窗口管理</span>
+              <div class="space-y-1">
+                <div class="flex justify-between">
+                  <span class="text-[var(--text-muted)]">最大上下文长度 (Context Window)</span>
+                  <span class="text-[var(--accent-gold)] font-mono">65,536 tokens</span>
+                </div>
+                <input type="range" min="4000" max="128000" step="4000" value="65536" class="w-full accent-[var(--accent-gold)]">
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- ================= 模拟右键上下文菜单 ================= -->
+  <div id="custom-context-menu" class="hidden text-xs">
+    <div class="px-2.5 py-1.5 font-bold text-[var(--accent-gold)] border-b border-[var(--border-subtle)] truncate max-w-[180px]" id="ctx-target-name">
+      讨论操作
+    </div>
+    <button onclick="ctxAction('rename')" class="w-full text-left px-2.5 py-1.5 rounded hover:bg-[var(--bg-hover)] text-[var(--text-main)] flex items-center gap-1.5">
+      <span>✏️</span> <span>重命名讨论</span>
+    </button>
+    <button onclick="ctxAction('export')" class="w-full text-left px-2.5 py-1.5 rounded hover:bg-[var(--bg-hover)] text-[var(--text-main)] flex items-center gap-1.5">
+      <span>📤</span> <span>导出 Markdown 记录</span>
+    </button>
+    <div class="h-px bg-[var(--border-subtle)] my-1"></div>
+    <button onclick="ctxAction('delete')" class="w-full text-left px-2.5 py-1.5 rounded hover:bg-rose-950 text-rose-400 flex items-center gap-1.5 font-semibold">
+      <span>🗑️</span> <span>删除此讨论</span>
+    </button>
+  </div>
+
+
+  <!-- ================= 交互逻辑脚本 ================= -->
+  <script>
+    // 1. 动态模式切换（联动顶部面包屑）
+    function switchMode(mode) {
+      document.querySelectorAll('.view-pane').forEach(el => el.classList.remove('active'));
+      const active = document.getElementById('pane-' + mode);
+      if (active) active.classList.add('active');
+
+      // 切换顶部导航药丸高亮
+      ['writing', 'rp', 'agent'].forEach(m => {
+        const btn = document.getElementById('btn-mode-' + m);
+        if (btn) {
+          if (m === mode) {
+            btn.className = "px-2.5 py-1 rounded-md font-medium transition-all bg-[var(--bg-card)] text-[var(--accent-gold)] shadow-sm";
+          } else {
+            btn.className = "px-2.5 py-1 rounded-md font-medium transition-all text-[var(--text-muted)] hover:text-[var(--text-main)]";
+          }
+        }
+      });
+
+      // 彻底解决用户问题 1：动态更新顶部面包屑，不再永久常驻埃森马克
+      const breadcrumb = document.getElementById('header-context-title');
+      if (breadcrumb) {
+        if (mode === 'writing') {
+          breadcrumb.innerHTML = `
+            <span class="text-[var(--accent-gold)] font-medium">📖 《星穹余晖》</span>
+            <span class="opacity-40">/</span>
+            <span class="text-[var(--text-main)] opacity-90">第14章 逆光交锋</span>
+          `;
+        } else if (mode === 'rp') {
+          breadcrumb.innerHTML = `
+            <span class="text-[var(--accent-gold)] font-medium">🎭 Seraphina</span>
+            <span class="opacity-40">/</span>
+            <span class="text-[var(--text-main)] opacity-90">长廊夜话</span>
+          `;
+        } else if (mode === 'agent') {
+          breadcrumb.innerHTML = `
+            <span class="text-[var(--accent-gold)] font-medium">📁 A4_埃森马克</span>
+            <span class="opacity-40">/</span>
+            <span class="text-[var(--text-main)] opacity-90">梳理这个系列的资料结构</span>
+          `;
+        }
+      }
+    }
+
+    // 2. 小说正文推演交互：直接向中间正文画布写入（解决用户痛点：不在聊天框刷屏，直接入正文）
+    function selectCrossroad(branchKey, branchContent) {
+      const appendedEl = document.getElementById('prose-appended-text');
+      const countEl = document.getElementById('novel-word-count');
+      if (appendedEl) {
+        appendedEl.innerHTML = `<strong>【分支 ${branchKey} · 实时推演入库】：</strong>` + branchContent;
+        appendedEl.classList.remove('hidden');
+        appendedEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      if (countEl) {
+        countEl.textContent = '2,976';
+      }
+      showToast(`✨ 分支【${branchKey}】已直接写入中间正文画布！字数 +136 字`);
+    }
+
+    // 模拟 AI 续写写入画布
+    function triggerWritingAI(type) {
+      const appendedEl = document.getElementById('prose-appended-text');
+      const countEl = document.getElementById('novel-word-count');
+      if (appendedEl) {
+        appendedEl.innerHTML = `<strong>【AI 智能续写】：</strong>克莱尔凝视着天平旁倒下的试剂，冷笑了一声。“看来我们都被当成了棋子。”她压低声音，同时将一柄浸润了抗蚀镀层的短匕塞进埃森掌心。门外的脚步声在三秒后戛然而止。`;
+        appendedEl.classList.remove('hidden');
+        appendedEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      if (countEl) {
+        countEl.textContent = '3,018';
+      }
+      showToast('⚡ AI 续写完成，正文已直接追加至画布！');
+    }
+
+    // 换一批推演分支
+    function refreshCrossroadsMock() {
+      showToast('🔄 已结合当前暗线与人物动机，重新生成 4 组推演分支！');
+    }
+
+    // 3. 小说右栏选项卡切换：创作讨论 VS 设定随身镜
+    function switchNovelRightTab(tab) {
+      const isDisc = tab === 'discussion';
+      const discEl = document.getElementById('novel-right-tab-discussion');
+      const mirrorEl = document.getElementById('novel-right-tab-mirror');
+      const btnDisc = document.getElementById('btn-novel-tab-discussion');
+      const btnMirror = document.getElementById('btn-novel-tab-mirror');
+      if (discEl) discEl.classList.toggle('hidden', !isDisc);
+      if (mirrorEl) mirrorEl.classList.toggle('hidden', isDisc);
+      if (btnDisc) {
+        btnDisc.className = isDisc
+          ? "px-2.5 py-1 rounded-md font-medium text-xs bg-[var(--bg-card)] text-[var(--accent-gold)] shadow-sm"
+          : "px-2.5 py-1 rounded-md font-medium text-xs text-[var(--text-muted)] hover:text-white";
+      }
+      if (btnMirror) {
+        btnMirror.className = !isDisc
+          ? "px-2.5 py-1 rounded-md font-medium text-xs bg-[var(--bg-card)] text-[var(--accent-gold)] shadow-sm"
+          : "px-2.5 py-1 rounded-md font-medium text-xs text-[var(--text-muted)] hover:text-white";
+      }
+    }
+
+    // 4. 小说 AI 创作讨论流发送交互（解决用户核心痛点：边聊边写，正文直落画布）
+    function sendNovelDiscussion() {
+      const input = document.getElementById('novel-ai-chat-input');
+      const val = (input?.value || '').trim() || '请帮我接续写下一段危机爆发的对峙戏码';
+      const log = document.getElementById('writing-discussion-log');
+      if (!log) return;
+      
+      // 添加用户消息气泡
+      const userBubble = document.createElement('div');
+      userBubble.className = "p-2.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] text-xs text-[var(--text-main)] space-y-1";
+      userBubble.innerHTML = `
+        <div class="flex items-center justify-between text-[10px] text-[var(--accent-gold)] font-bold">
+          <span>你 (作者)</span>
+          <span class="text-[var(--text-dim)] font-normal">刚刚</span>
+        </div>
+        <p class="leading-relaxed">${val}</p>
+      `;
+      log.appendChild(userBubble);
+      if (input) input.value = '';
+      log.scrollTop = log.scrollHeight;
+
+      // 模拟 AI 副驾协同生成并直接注入中间正文画布
+      setTimeout(() => {
+        const aiBubble = document.createElement('div');
+        aiBubble.className = "p-3 rounded-xl bg-[rgba(201,167,107,0.06)] border border-[var(--accent-gold)]/30 text-xs text-[var(--text-main)] space-y-2";
+        aiBubble.innerHTML = `
+          <div class="flex items-center justify-between text-[10px]">
+            <div class="flex items-center gap-1.5 font-bold text-[var(--accent-gold)]">
+              <span>✦</span> <span>AI 写作副驾</span>
+              <span class="text-[9px] text-emerald-400 font-mono bg-emerald-950/60 px-1 rounded">DeepSeek-V4</span>
+            </div>
+            <span class="text-[var(--text-dim)]">刚刚</span>
+          </div>
+          <p class="text-[11px] leading-relaxed text-stone-300">
+            收到讨论指示！已根据你的构思融入戏剧冲突，并起草完成接续正文。
+          </p>
+          <div class="p-2.5 rounded-lg bg-[var(--bg-base)] border border-emerald-500/30 text-emerald-300 text-xs flex items-center justify-between shadow-inner">
+            <div class="flex items-center gap-1.5 font-medium">
+              <span>✅</span>
+              <span>续写段落已直接注入中间正文画布！</span>
+            </div>
+            <span class="text-[10px] text-emerald-400 font-mono">+310 字</span>
+          </div>
+        `;
+        log.appendChild(aiBubble);
+        log.scrollTop = log.scrollHeight;
+
+        // 向中间正文画布追加正文
+        const proseAppended = document.getElementById('prose-appended-text');
+        const countEl = document.getElementById('novel-word-count');
+        if (proseAppended) {
+          proseAppended.innerHTML = `<strong>【AI 对话协同写作 · 续写正文】：</strong>“砰！”门轴发出一声哀鸣，潮湿的冷风卷着雨水猛烈灌入房间。克莱尔的手已经摸到了左轮击锤，而埃森不慌不忙地将盛满试剂的玻璃安瓿滑入袖管。站在门口的，并不是巡警，而是一名身穿黑色皮风衣、面部覆盖着银质防毒面具的不速之客。`;
+          proseAppended.classList.remove('hidden');
+          proseAppended.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        if (countEl) countEl.textContent = '3,150';
+        showToast('✨ AI 已根据讨论内容将正文直接写入中间画布！');
+      }, 450);
+    }
+
+    function quickDiscussionPrompt(text) {
+      const input = document.getElementById('novel-ai-chat-input');
+      if (input) {
+        input.value = text;
+        sendNovelDiscussion();
+      }
+    }
+
+    function addNovelDiscussionTopic() {
+      const name = prompt('请输入新讨论主题：', '克莱尔身世线索推演');
+      if (name) showToast(`已创建小说讨论：${name}`);
+    }
+
+    // 现代通知小气泡
+    function showToast(msg) {
+      const toast = document.createElement('div');
+      toast.className = 'fixed bottom-6 right-6 z-[9999] px-4 py-2.5 rounded-xl bg-[var(--bg-card)] border border-[var(--accent-gold)] text-[var(--accent-gold)] text-xs font-medium shadow-2xl transition-all duration-300';
+      toast.textContent = msg;
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(10px)';
+        setTimeout(() => toast.remove(), 300);
+      }, 2500);
+    }
+
+    // 设置大面板 (DeepSeek Harness 风格) 模态控制
+    function openSettingsModal() {
+      document.getElementById('settings-modal').classList.remove('hidden');
+    }
+    function closeSettingsModal() {
+      document.getElementById('settings-modal').classList.add('hidden');
+    }
+
+    // 设置选项卡切换
+    function switchSettingsTab(tabName) {
+      ['account', 'models', 'params', 'presets', 'world', 'plugins'].forEach(t => {
+        const tabEl = document.getElementById('settings-tab-' + t);
+        const btnEl = document.getElementById('tab-btn-' + t);
+        if (tabEl) tabEl.classList.toggle('hidden', t !== tabName);
+        if (btnEl) {
+          if (t === tabName) {
+            btnEl.className = "w-full px-3 py-2 rounded-xl text-left font-medium text-xs flex items-center gap-2.5 bg-[var(--bg-card)] text-[var(--accent-gold)] shadow-sm";
+          } else {
+            btnEl.className = "w-full px-3 py-2 rounded-xl text-left font-medium text-xs flex items-center gap-2.5 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-white";
+          }
+        }
+      });
+    }
+
+    // 交互删除确认
+    function confirmDeleteThread(name) {
+      if (confirm(`确定要删除讨论「${name}」吗？\n删除后不可恢复。`)) {
+        alert(`已成功删除讨论：${name}`);
+      }
+    }
+    function confirmRemoveSeries(name) {
+      if (confirm(`确定在工作区中解除「${name}」系列绑定吗？\n放心：这绝对不会删除您本地硬盘中的任何真实文件。`)) {
+        alert(`已从工作区解绑系列：${name}`);
+      }
+    }
+
+    // 模拟添加讨论
+    function addDiscussionMock() {
+      const name = prompt('请输入新讨论名称：', '新角色暗线推演');
+      if (name) alert(`已创建新讨论：${name}`);
+    }
+
+    // 右键上下文菜单
+    let currentCtxTarget = '';
+    function showContextMenu(e, name) {
+      e.preventDefault();
+      currentCtxTarget = name;
+      const menu = document.getElementById('custom-context-menu');
+      document.getElementById('ctx-target-name').textContent = name;
+      menu.style.left = e.clientX + 'px';
+      menu.style.top = e.clientY + 'px';
+      menu.classList.remove('hidden');
+    }
+    window.addEventListener('click', () => {
+      document.getElementById('custom-context-menu').classList.add('hidden');
+    });
+
+    function ctxAction(action) {
+      if (action === 'delete') confirmDeleteThread(currentCtxTarget);
+      else if (action === 'rename') {
+        const n = prompt('重命名讨论：', currentCtxTarget);
+        if (n) alert(`已重命名为：${n}`);
+      } else if (action === 'export') {
+        alert(`已导出「${currentCtxTarget}」为 Markdown 文档。`);
+      }
+    }
+
+    // ==========================================================
+    // 方向四：拖拽实时 HUD 标尺与磁吸系统 (Magnetic Snap & HUD)
+    // ==========================================================
+    function showDragHud(x, y, text, isSnapped = false) {
+      const hud = document.getElementById('drag-hud-badge');
+      const label = document.getElementById('drag-hud-text');
+      if (!hud || !label) return;
+      label.textContent = text;
+      // 避免超出屏幕边界
+      const clampedX = Math.min(Math.max(x + 14, 10), window.innerWidth - 200);
+      const clampedY = Math.min(Math.max(y - 28, 10), window.innerHeight - 40);
+      hud.style.left = clampedX + 'px';
+      hud.style.top = clampedY + 'px';
+      hud.style.opacity = '1';
+      if (isSnapped) {
+        hud.classList.add('border-amber-400', 'text-amber-300', 'scale-105');
+        hud.classList.remove('border-[var(--accent-gold)]');
+      } else {
+        hud.classList.remove('border-amber-400', 'text-amber-300', 'scale-105');
+        hud.classList.add('border-[var(--accent-gold)]');
+      }
+    }
+
+    function hideDragHud() {
+      const hud = document.getElementById('drag-hud-badge');
+      if (hud) hud.style.opacity = '0';
+    }
+
+    function initColResize(resizerId, targetId, direction = 'left', min = 180, max = 500) {
+      const resizer = document.getElementById(resizerId);
+      const target = document.getElementById(targetId);
+      if (!resizer || !target) return;
+
+      const defaultW = Math.round(target.getBoundingClientRect().width) || 260;
+
+      // 双击重置为标准默认宽度
+      resizer.addEventListener('dblclick', () => {
+        const curW = target.getBoundingClientRect().width;
+        const nextW = Math.abs(curW - defaultW) < 15 ? (curW > 280 ? 200 : defaultW) : defaultW;
+        target.style.width = nextW + 'px';
+        resizer.classList.add('resizer-snap-pulse');
+        setTimeout(() => resizer.classList.remove('resizer-snap-pulse'), 450);
+        showToast(`已重置分栏宽度：${nextW}px`);
+      });
+
+      resizer.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const startX = e.clientX;
+        const startWidth = target.getBoundingClientRect().width;
+        resizer.classList.add('resizing');
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+
+        // 磁吸吸附点 (Snap Targets)
+        const snapTargets = [
+          { val: 220, label: '紧凑收纳' },
+          { val: defaultW, label: '推荐默认' },
+          { val: 340, label: '加宽大纲' }
+        ];
+
+        function onMouseMove(moveEvent) {
+          const delta = direction === 'left' 
+            ? moveEvent.clientX - startX 
+            : startX - moveEvent.clientX;
+          let calculatedW = Math.min(Math.max(startWidth + delta, min), max);
+
+          // 磁吸检测 (±8px 阈值)
+          let isSnapped = false;
+          let snapLabel = '';
+          for (const s of snapTargets) {
+            if (Math.abs(calculatedW - s.val) <= 8) {
+              calculatedW = s.val;
+              isSnapped = true;
+              snapLabel = s.label;
+              break;
+            }
+          }
+
+          target.style.width = calculatedW + 'px';
+          
+          const pct = Math.round((calculatedW / window.innerWidth) * 100);
+          const hudText = isSnapped 
+            ? `★ ${calculatedW}px · ${snapLabel} (磁吸)` 
+            : `宽 ${calculatedW}px · 占比 ${pct}%`;
+          showDragHud(moveEvent.clientX, moveEvent.clientY, hudText, isSnapped);
+        }
+
+        function onMouseUp() {
+          resizer.classList.remove('resizing');
+          document.body.style.cursor = '';
+          document.body.style.userSelect = '';
+          hideDragHud();
+          document.removeEventListener('mousemove', onMouseMove);
+          document.removeEventListener('mouseup', onMouseUp);
+        }
+
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+      });
+    }
+
+    function initRowResize(resizerId, targetId, direction = 'bottom', min = 80, max = 800) {
+      const resizer = document.getElementById(resizerId);
+      const target = document.getElementById(targetId);
+      if (!resizer || !target) return;
+
+      const defaultH = Math.round(target.getBoundingClientRect().height) || 320;
+
+      // 双击快速吸附 / 展开 / 还原
+      resizer.addEventListener('dblclick', () => {
+        const curH = target.getBoundingClientRect().height;
+        const parentH = target.parentElement ? target.parentElement.clientHeight : window.innerHeight;
+        const fullH = Math.max(120, parentH - 72);
+        const nextH = curH > 400 ? defaultH : fullH;
+        target.style.height = nextH + 'px';
+        resizer.classList.add('resizer-snap-pulse');
+        setTimeout(() => resizer.classList.remove('resizer-snap-pulse'), 450);
+        showToast(`已${nextH === fullH ? '全高展开' : '恢复默认高度'}：${nextH}px`);
+      });
+
+      resizer.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const startY = e.clientY;
+        const startHeight = target.getBoundingClientRect().height;
+        resizer.classList.add('resizing');
+        document.body.style.cursor = 'row-resize';
+        document.body.style.userSelect = 'none';
+
+        // 动态计算父容器允许的最大高度
+        const parentH = target.parentElement ? target.parentElement.clientHeight : window.innerHeight;
+        const containerLimit = Math.max(min, parentH - 72);
+        const effectiveMax = Math.min(max, containerLimit);
+
+        // 垂直磁吸吸附点
+        const snapTargets = [
+          { val: 145, label: '输入坞默认' },
+          { val: 320, label: '黄金视窗' },
+          { val: Math.round(parentH * 0.5), label: '对半平分 50%' },
+          { val: effectiveMax, label: '贴顶全高' }
+        ].filter(s => s.val >= min && s.val <= effectiveMax);
+
+        function onMouseMove(moveEvent) {
+          const delta = direction === 'bottom' 
+            ? startY - moveEvent.clientY 
+            : moveEvent.clientY - startY;
+          let calculatedH = Math.min(Math.max(startHeight + delta, min), effectiveMax);
+
+          // 磁吸检测 (±10px 阈值)
+          let isSnapped = false;
+          let snapLabel = '';
+          for (const s of snapTargets) {
+            if (Math.abs(calculatedH - s.val) <= 10) {
+              calculatedH = s.val;
+              isSnapped = true;
+              snapLabel = s.label;
+              break;
+            }
+          }
+
+          target.style.height = calculatedH + 'px';
+
+          const pct = Math.round((calculatedH / parentH) * 100);
+          const hudText = isSnapped 
+            ? `★ ${calculatedH}px · ${snapLabel} (磁吸)` 
+            : `高 ${calculatedH}px · 占比 ${pct}%`;
+          showDragHud(moveEvent.clientX, moveEvent.clientY, hudText, isSnapped);
+        }
+
+        function onMouseUp() {
+          resizer.classList.remove('resizing');
+          document.body.style.cursor = '';
+          document.body.style.userSelect = '';
+          hideDragHud();
+          document.removeEventListener('mousemove', onMouseMove);
+          document.removeEventListener('mouseup', onMouseUp);
+        }
+
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+      });
+    }
+
+    // 折叠/展开/最大化小说右下角随身镜面板 (与本地工作区同款全高支持)
+    let novelBottomCollapsed = false;
+    let novelBottomPrevHeight = '320px';
+    let novelBottomMaximized = false;
+    let novelBottomPreMaxHeight = '320px';
+
+    function toggleNovelBottomPane() {
+      const pane = document.getElementById('novel-right-bottom-pane');
+      const toggleBtn = document.getElementById('btn-novel-bottom-toggle');
+      if (!pane) return;
+      if (!novelBottomCollapsed) {
+        novelBottomPrevHeight = pane.style.height || '320px';
+        pane.style.height = '32px';
+        if (toggleBtn) toggleBtn.textContent = '▸';
+        novelBottomCollapsed = true;
+      } else {
+        pane.style.height = novelBottomPrevHeight;
+        if (toggleBtn) toggleBtn.textContent = '▾';
+        novelBottomCollapsed = false;
+      }
+    }
+
+    function maximizeNovelBottomPane() {
+      const pane = document.getElementById('novel-right-bottom-pane');
+      const maxBtn = document.getElementById('btn-novel-bottom-max');
+      if (!pane) return;
+
+      const parentH = pane.parentElement ? pane.parentElement.clientHeight : window.innerHeight;
+      const maxH = Math.max(120, parentH - 72);
+
+      if (!novelBottomMaximized) {
+        novelBottomPreMaxHeight = pane.style.height || '320px';
+        pane.style.height = maxH + 'px';
+        if (maxBtn) {
+          maxBtn.textContent = '⤦';
+          maxBtn.title = '还原随身镜高度';
+        }
+        novelBottomMaximized = true;
+        showToast('已全高展开场景随身镜 (与本地工作区同款广阔视野)');
+      } else {
+        pane.style.height = novelBottomPreMaxHeight;
+        if (maxBtn) {
+          maxBtn.textContent = '⤢';
+          maxBtn.title = '全高展开随身镜';
+        }
+        novelBottomMaximized = false;
+        showToast('已还原随身镜高度');
+      }
+    }
+
+    // ==========================================================
+    // 本地 Agent 文档实时预览与对照窗口交互 (图二右下角小窗)
+    // ==========================================================
+    let currentPreviewFilename = '01_Audit/Characters.md';
+    let agentViewerCollapsed = false;
+    let agentViewerPrevHeight = '340px';
+    let agentViewerMaximized = false;
+    let agentViewerPreMaxHeight = '340px';
+
+    function openAgentFilePreview(filename, content) {
+      currentPreviewFilename = filename;
+      const pane = document.getElementById('agent-viewer-pane');
+      const resizer = document.getElementById('agent-resizer-h-right');
+      const fnEl = document.getElementById('agent-viewer-filename');
+      const bodyEl = document.getElementById('agent-viewer-body');
+      const toggleBtn = document.getElementById('btn-agent-viewer-toggle');
+
+      if (pane) {
+        pane.classList.remove('hidden');
+        if (pane.style.height === '32px' || pane.style.height === '0px' || !pane.style.height) {
+          pane.style.height = '340px';
+          agentViewerCollapsed = false;
+        }
+      }
+      if (resizer) resizer.classList.remove('hidden');
+      if (toggleBtn) toggleBtn.textContent = '▾';
+      if (fnEl) fnEl.textContent = filename;
+
+      if (bodyEl && content) {
+        // 渲染 Markdown 为精致 HTML
+        let html = content
+          .replace(/^### (.*$)/gim, '<div class="text-[11px] font-bold text-[var(--accent-gold)] border-b border-white/10 pb-1 mb-2">$1</div>')
+          .replace(/\*\*(.*?)\*\*/g, '<strong class="text-white">$1</strong>')
+          .replace(/^- (.*$)/gim, '<li class="text-[11px] text-[var(--text-muted)] leading-relaxed">$1</li>')
+          .replace(/\n\n/g, '<div class="h-2"></div>')
+          .replace(/\n/g, '<br>');
+        if (html.includes('<li')) {
+          html = `<ul class="list-disc pl-4 space-y-1">${html}</ul>`;
+        }
+        bodyEl.innerHTML = html;
+      }
+
+      // 激活文档列表中的选中高亮态
+      document.querySelectorAll('#agent-tree-files .tree-row').forEach(row => {
+        if (row.textContent.includes(filename)) {
+          row.classList.add('bg-[rgba(201,167,107,0.12)]', 'border', 'border-[rgba(201,167,107,0.3)]', 'text-[var(--accent-gold)]');
+          row.classList.remove('text-[var(--text-muted)]');
+        } else {
+          row.classList.remove('bg-[rgba(201,167,107,0.12)]', 'border', 'border-[rgba(201,167,107,0.3)]', 'text-[var(--accent-gold)]');
+          row.classList.add('text-[var(--text-muted)]');
+        }
+      });
+
+      showToast(`📄 已在右下角预览窗打开：${filename}`);
+    }
+
+    function toggleAgentViewerPane() {
+      const pane = document.getElementById('agent-viewer-pane');
+      const toggleBtn = document.getElementById('btn-agent-viewer-toggle');
+      if (!pane) return;
+      if (!agentViewerCollapsed) {
+        agentViewerPrevHeight = pane.style.height || '340px';
+        pane.style.height = '32px';
+        if (toggleBtn) toggleBtn.textContent = '▸';
+        agentViewerCollapsed = true;
+      } else {
+        pane.style.height = agentViewerPrevHeight;
+        if (toggleBtn) toggleBtn.textContent = '▾';
+        agentViewerCollapsed = false;
+      }
+    }
+
+    function maximizeAgentViewerPane() {
+      const pane = document.getElementById('agent-viewer-pane');
+      const maxBtn = document.getElementById('btn-agent-viewer-max');
+      if (!pane) return;
+
+      const parentH = pane.parentElement ? pane.parentElement.clientHeight : window.innerHeight;
+      const maxH = Math.max(120, parentH - 72);
+
+      if (!agentViewerMaximized) {
+        agentViewerPreMaxHeight = pane.style.height || '340px';
+        pane.style.height = maxH + 'px';
+        if (maxBtn) {
+          maxBtn.textContent = '⤦';
+          maxBtn.title = '还原预览窗高度';
+        }
+        agentViewerMaximized = true;
+        showToast('已将文档预览窗全高展开 (可按住拖拽条自由微调)');
+      } else {
+        pane.style.height = agentViewerPreMaxHeight;
+        if (maxBtn) {
+          maxBtn.textContent = '⤢';
+          maxBtn.title = '全高展开预览窗';
+        }
+        agentViewerMaximized = false;
+        showToast('已还原文档预览窗高度');
+      }
+    }
+
+    function closeAgentViewerPane() {
+      const pane = document.getElementById('agent-viewer-pane');
+      const resizer = document.getElementById('agent-resizer-h-right');
+      if (pane) pane.classList.add('hidden');
+      if (resizer) resizer.classList.add('hidden');
+      showToast('已关闭文档预览窗口');
+    }
+
+    function quoteActiveFile() {
+      quoteFileToAgent(currentPreviewFilename);
+    }
+
+    function quoteFileToAgent(filename) {
+      const textarea = document.querySelector('#agent-center-col textarea');
+      if (textarea) {
+        textarea.value = `请结合本地文档《${filename}》的设定：\n` + textarea.value;
+        textarea.focus();
+        showToast(`已引用「${filename}」至输入框`);
+      }
+    }
+
+    function filterAgentFiles(query) {
+      const term = query.trim().toLowerCase();
+      document.querySelectorAll('#agent-tree-files .tree-row').forEach(row => {
+        row.style.display = row.textContent.toLowerCase().includes(term) ? 'flex' : 'none';
+      });
+    }
+
+    // ==========================================================
+    // 全局命令罗盘 (Command Palette Ctrl+K) 控制
+    // ==========================================================
+    function openCommandPalette() {
+      const modal = document.getElementById('command-palette-modal');
+      const input = document.getElementById('command-palette-input');
+      if (modal) modal.classList.remove('hidden');
+      if (input) {
+        input.value = '';
+        filterPaletteItems('');
+        setTimeout(() => input.focus(), 50);
+      }
+    }
+    function closeCommandPalette() {
+      const modal = document.getElementById('command-palette-modal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function filterPaletteItems(query) {
+      const q = query.trim().toLowerCase();
+      document.querySelectorAll('#command-palette-list .palette-item').forEach(el => {
+        const text = el.textContent.toLowerCase();
+        el.style.display = text.includes(q) ? 'flex' : 'none';
+      });
+    }
+
+    function execPaletteAction(action) {
+      closeCommandPalette();
+      if (action === 'mode-writing') switchMode('writing');
+      else if (action === 'mode-rp') switchMode('rp');
+      else if (action === 'mode-agent') switchMode('agent');
+      else if (action === 'model-deepseek') {
+        document.getElementById('header-model-badge').textContent = 'DeepSeek-V4-Flash';
+        showToast('🖩 已切换模型为：DeepSeek-V4-Flash (极速首选)');
+      } else if (action === 'model-claude') {
+        document.getElementById('header-model-badge').textContent = 'Claude-3.5-Sonnet';
+        showToast('🖩 已切换模型为：Claude 3.5 Sonnet (深度推演)');
+      } else if (action === 'model-gpt4o') {
+        document.getElementById('header-model-badge').textContent = 'GPT-4o';
+        showToast('🖩 已切换模型为：GPT-4o (全能旗舰)');
+      } else if (action === 'action-crossroads') {
+        switchMode('writing');
+        refreshCrossroadsMock();
+      } else if (action === 'action-write') {
+        switchMode('writing');
+        triggerWritingAI('continue');
+      } else if (action === 'action-settings') {
+        openSettingsModal();
+      }
+    }
+
+    // ==========================================================
+    // 页面就绪：绑定拖拽、输入与快捷键
+    // ==========================================================
+    document.addEventListener('DOMContentLoaded', () => {
+      // 1. 初始化所有 Obsidian / VS Code 拖拽调节器
+      initColResize('novel-resizer-left', 'novel-left-col', 'left', 180, 420);
+      initColResize('novel-resizer-right', 'novel-right-col', 'right', 260, 560);
+      initRowResize('novel-composer-resizer', 'novel-composer-pane', 'bottom', 95, 480);
+      initRowResize('novel-resizer-h-right', 'novel-right-bottom-pane', 'bottom', 60, 9999);
+      initColResize('agent-resizer-left', 'agent-left-col', 'left', 180, 420);
+      initColResize('agent-resizer-right', 'agent-right-col', 'right', 200, 450);
+      initRowResize('agent-resizer-h-right', 'agent-viewer-pane', 'bottom', 80, 9999);
+
+      // 2. 绑定回车发送事件
+      const novelInput = document.getElementById('novel-ai-chat-input');
+      if (novelInput) {
+        novelInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendNovelDiscussion();
+          }
+        });
+      }
+
+      // 3. 命令罗盘输入过滤
+      const palInput = document.getElementById('command-palette-input');
+      if (palInput) {
+        palInput.addEventListener('input', (e) => filterPaletteItems(e.target.value));
+      }
+
+      // 4. 全局快捷键监听 (Ctrl+K, Ctrl+,, Ctrl+J, Esc)
+      window.addEventListener('keydown', (e) => {
+        // Ctrl + K 打开命令罗盘
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+          e.preventDefault();
+          const modal = document.getElementById('command-palette-modal');
+          if (modal && !modal.classList.contains('hidden')) closeCommandPalette();
+          else openCommandPalette();
+        }
+        // Ctrl + , 打开设置大面板
+        if ((e.ctrlKey || e.metaKey) && e.key === ',') {
+          e.preventDefault();
+          openSettingsModal();
+        }
+        // Ctrl + J 召唤剧情十字路口
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'j') {
+          e.preventDefault();
+          switchMode('writing');
+          refreshCrossroadsMock();
+        }
+        // Esc 关闭弹窗
+        if (e.key === 'Escape') {
+          closeCommandPalette();
+          closeSettingsModal();
+        }
+      });
+    });
+  </script>
+</body>
+</html>

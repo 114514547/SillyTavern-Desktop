@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SillyTavern Desktop - 角色卡管理现代化重构交互原型</title>
+  <style>
+    :root {
+      --dw-bg-base: #0b0b0e;
+      --dw-bg-panel: #131317;
+      --dw-bg-card: #1a1a22;
+      --dw-bg-card-hover: #22222d;
+      --dw-bg-input: #101014;
+      --dw-border: #262633;
+      --dw-border-subtle: #1c1c26;
+      --dw-accent-gold: #c9a76b;
+      --dw-accent-gold-hover: #dfbc7e;
+      --dw-accent-gold-glow: rgba(201, 167, 107, 0.25);
+      --dw-text-main: #e2e2e8;
+      --dw-text-muted: #8e8e9c;
+      --dw-text-dim: #5c5c6b;
+      --dw-danger: #fb7185;
+      --dw-success: #34d399;
+      --dw-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      --dw-radius: 12px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--dw-bg-base);
+      background-image: 
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(201, 167, 107, 0.08), transparent 70%),
+        radial-gradient(circle at 100% 100%, rgba(56, 189, 248, 0.03), transparent 40%);
+      color: var(--dw-text-main);
+      font-family: var(--dw-font);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    /* 顶部演示导航栏 */
+    #demo-topbar {
+      height: 48px;
+      padding: 0 20px;
+      background: rgba(19, 19, 23, 0.9);
+      border-bottom: 1px solid var(--dw-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      backdrop-filter: blur(12px);
+    }
+    .demo-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--dw-accent-gold);
+      letter-spacing: 0.05em;
+    }
+    .demo-tag {
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 20px;
+      background: rgba(201, 167, 107, 0.15);
+      border: 1px solid rgba(201, 167, 107, 0.3);
+      color: var(--dw-accent-gold-hover);
+      font-weight: normal;
+    }
+    .demo-view-toggle {
+      display: flex;
+      background: var(--dw-bg-input);
+      border: 1px solid var(--dw-border);
+      border-radius: 8px;
+      padding: 3px;
+      gap: 4px;
+    }
+    .toggle-btn {
+      padding: 4px 12px;
+      border: none;
+      background: transparent;
+      color: var(--dw-text-muted);
+      font-size: 12px;
+      cursor: pointer;
+      border-radius: 6px;
+      transition: all 0.15s;
+    }
+    .toggle-btn.active {
+      background: var(--dw-bg-card);
+      color: var(--dw-accent-gold);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+      font-weight: 600;
+    }
+
+    /* 主模态窗口容器 */
+    #workspace-container {
+      flex: 1;
+      padding: 16px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+    }
+
+    .modal-frame {
+      width: 100%;
+      max-width: 1380px;
+      height: 100%;
+      max-height: 860px;
+      background: var(--dw-bg-panel);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--dw-radius);
+      box-shadow: 0 25px 70px -15px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* 模态框顶部 */
+    .modal-header {
+      height: 48px;
+      padding: 0 20px;
+      border-bottom: 1px solid var(--dw-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: linear-gradient(180deg, rgba(28, 28, 36, 0.8), rgba(20, 20, 26, 0.95));
+    }
+    .modal-title-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .modal-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .modal-subtitle {
+      font-size: 11px;
+      color: var(--dw-text-dim);
+    }
+    .modal-close-btn {
+      width: 28px;
+      height: 28px;
+      border: none;
+      background: transparent;
+      color: var(--dw-text-muted);
+      border-radius: 6px;
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      font-size: 14px;
+    }
+    .modal-close-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+    }
+
+    /* ========================================================== */
+    /* 核心：Master-Detail 双栏工作台排版 (告别横屏刷抖音！)           */
+    /* ========================================================== */
+    .master-detail-body {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 310px minmax(0, 1fr);
+      overflow: hidden;
+    }
+
+    /* 左栏：角色画廊索引 (Master) */
+    .master-sidebar {
+      background: rgba(16, 16, 20, 0.95);
+      border-right: 1px solid var(--dw-border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .master-tools {
+      padding: 12px;
+      border-bottom: 1px solid var(--dw-border-subtle);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .search-input-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    .search-input-wrap span {
+      position: absolute;
+      left: 10px;
+      font-size: 12px;
+      color: var(--dw-text-dim);
+    }
+    .search-input {
+      width: 100%;
+      background: var(--dw-bg-input);
+      border: 1px solid var(--dw-border);
+      border-radius: 8px;
+      padding: 6px 10px 6px 30px;
+      font-size: 12px;
+      color: var(--dw-text-main);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .search-input:focus {
+      border-color: var(--dw-accent-gold);
+    }
+    .master-actions-row {
+      display: flex;
+      gap: 8px;
+    }
+    .btn-create-char {
+      flex: 1;
+      background: rgba(201, 167, 107, 0.12);
+      border: 1px solid rgba(201, 167, 107, 0.35);
+      color: var(--dw-accent-gold);
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.15s;
+    }
+    .btn-create-char:hover {
+      background: rgba(201, 167, 107, 0.22);
+      border-color: var(--dw-accent-gold);
+    }
+    .btn-import-char {
+      padding: 6px 12px;
+      background: var(--dw-bg-card);
+      border: 1px solid var(--dw-border);
+      color: var(--dw-text-muted);
+      border-radius: 8px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-import-char:hover {
+      background: var(--dw-bg-card-hover);
+      color: #fff;
+    }
+
+    /* 角色列表 */
+    .char-list-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .char-item-card {
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid transparent;
+      background: transparent;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      cursor: pointer;
+      transition: all 0.15s;
+      position: relative;
+    }
+    .char-item-card:hover {
+      background: var(--dw-bg-card-hover);
+      border-color: rgba(255, 255, 255, 0.05);
+    }
+    .char-item-card.active {
+      background: var(--dw-bg-card);
+      border-color: rgba(201, 167, 107, 0.4);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+    .char-avatar-circle {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      font-size: 14px;
+      color: #17110b;
+      position: relative;
+    }
+    .char-meta-col {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .char-name-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .char-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: #fff;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .char-token-badge {
+      font-size: 10px;
+      font-family: ui-monospace, monospace;
+      color: var(--dw-text-dim);
+    }
+    .char-item-card.active .char-token-badge {
+      color: var(--dw-accent-gold);
+    }
+    .char-snippet {
+      font-size: 11px;
+      color: var(--dw-text-muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .char-tags-row {
+      display: flex;
+      gap: 4px;
+      margin-top: 4px;
+    }
+    .char-micro-tag {
+      font-size: 9px;
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--dw-text-dim);
+    }
+
+    /* 右栏：角色工作台 (Detail) */
+    .detail-workbench {
+      background: var(--dw-bg-base);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* 角色看板头部 (Billboard) */
+    .char-billboard {
+      padding: 16px 24px;
+      background: linear-gradient(180deg, rgba(22, 22, 28, 0.95), rgba(16, 16, 20, 0.98));
+      border-bottom: 1px solid var(--dw-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 20px;
+    }
+    .billboard-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex: 1;
+      min-width: 0;
+    }
+    .billboard-avatar-box {
+      width: 72px;
+      height: 72px;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 2px solid rgba(201, 167, 107, 0.4);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+      position: relative;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .billboard-avatar-box:hover::after {
+      content: '更换';
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      display: grid;
+      place-items: center;
+      font-size: 11px;
+      color: #fff;
+    }
+    .billboard-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex: 1;
+      min-width: 0;
+    }
+    .billboard-title-line {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .billboard-name-input {
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      padding: 2px 6px;
+      outline: none;
+      transition: all 0.15s;
+      width: 240px;
+    }
+    .billboard-name-input:focus {
+      background: var(--dw-bg-input);
+      border-color: var(--dw-accent-gold);
+    }
+    .badge-version {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--dw-text-muted);
+      font-family: ui-monospace, monospace;
+    }
+    .billboard-token-meter {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 11px;
+      color: var(--dw-text-muted);
+    }
+    .token-bar-track {
+      width: 140px;
+      height: 5px;
+      background: var(--dw-bg-card);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .token-bar-fill {
+      width: 25%;
+      height: 100%;
+      background: linear-gradient(90deg, #c9a76b, #34d399);
+      border-radius: 3px;
+    }
+    .billboard-tags-pool {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .tag-chip {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      background: var(--dw-bg-card);
+      border: 1px solid var(--dw-border);
+      color: var(--dw-text-muted);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .tag-chip:hover {
+      border-color: var(--dw-accent-gold);
+      color: var(--dw-accent-gold);
+    }
+    .btn-add-tag {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 12px;
+      background: transparent;
+      border: 1px dashed var(--dw-border);
+      color: var(--dw-text-dim);
+      cursor: pointer;
+    }
+
+    /* 右侧主操作区 (告别盲人摸象神秘图标) */
+    .billboard-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .btn-start-chat {
+      background: var(--dw-accent-gold);
+      color: #0b0b0e;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 16px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 4px 14px var(--dw-accent-gold-glow);
+      transition: all 0.15s;
+    }
+    .btn-start-chat:hover {
+      background: var(--dw-accent-gold-hover);
+      transform: translateY(-1px);
+    }
+    .btn-action-ghost {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--dw-border);
+      color: var(--dw-text-main);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s;
+    }
+    .btn-action-ghost:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(201, 167, 107, 0.4);
+    }
+    .btn-action-danger {
+      color: var(--dw-danger);
+    }
+    .btn-action-danger:hover {
+      border-color: var(--dw-danger);
+      background: rgba(251, 113, 133, 0.1);
+    }
+
+    /* 主体左右双列网格 (Two-Column Grid) */
+    .editor-grid-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 24px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .editor-column {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .editor-card {
+      background: var(--dw-bg-card);
+      border: 1px solid var(--dw-border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    }
+    .card-header-line {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .card-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--dw-accent-gold);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .card-tools {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--dw-text-dim);
+    }
+    .card-textarea {
+      width: 100%;
+      background: var(--dw-bg-input);
+      border: 1px solid var(--dw-border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 13px;
+      line-height: 1.7;
+      color: var(--dw-text-main);
+      font-family: var(--dw-font);
+      outline: none;
+      resize: vertical;
+      min-height: 140px;
+      transition: border-color 0.15s;
+    }
+    .card-textarea:focus {
+      border-color: var(--dw-accent-gold);
+    }
+    .card-hint {
+      font-size: 10.5px;
+      color: var(--dw-text-dim);
+      line-height: 1.5;
+    }
+
+    /* 开场白切换条 */
+    .greeting-switcher {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .greeting-tab {
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: var(--dw-bg-input);
+      border: 1px solid var(--dw-border);
+      font-size: 11px;
+      color: var(--dw-text-muted);
+      cursor: pointer;
+    }
+    .greeting-tab.active {
+      background: rgba(201, 167, 107, 0.15);
+      border-color: var(--dw-accent-gold);
+      color: var(--dw-accent-gold);
+      font-weight: 600;
+    }
+
+    /* 差分与世界书微卡 */
+    .lorebook-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 10px;
+      background: var(--dw-bg-input);
+      border: 1px solid var(--dw-border);
+      border-radius: 8px;
+      font-size: 11.5px;
+    }
+    .lorebook-name {
+      color: var(--dw-text-main);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .lorebook-badge {
+      font-size: 10px;
+      color: var(--dw-text-dim);
+    }
+
+    /* 底部操作反馈栏 */
+    .modal-footer {
+      height: 38px;
+      padding: 0 20px;
+      border-top: 1px solid var(--dw-border);
+      background: var(--dw-bg-panel);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--dw-text-muted);
+    }
+
+    /* ========================================================== */
+    /* 对比模式：模拟旧版“刷抖音”全宽单列排版                       */
+    /* ========================================================== */
+    .legacy-view {
+      display: none;
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+      background: #0e0e11;
+    }
+    .legacy-view.active {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .legacy-header-alert {
+      padding: 10px 14px;
+      background: rgba(251, 113, 133, 0.12);
+      border: 1px solid rgba(251, 113, 133, 0.3);
+      color: #fb7185;
+      border-radius: 8px;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .legacy-block {
+      background: #141418;
+      border: 1px solid #282834;
+      border-radius: 8px;
+      padding: 16px;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 顶部交互控制栏 -->
+  <header id="demo-topbar">
+    <div class="demo-brand">
+      <span>🐱 SILITYTAVERN DESKTOP</span>
+      <span class="demo-tag">角色卡管理 UI 重构预览</span>
+    </div>
+
+    <!-- 方案对比切换开关 -->
+    <div class="demo-view-toggle">
+      <button class="toggle-btn active" id="btn-show-modern" onclick="switchView('modern')">
+        ✨ 现代方案：主从双栏画布 (Master-Detail)
+      </button>
+      <button class="toggle-btn" id="btn-show-legacy" onclick="switchView('legacy')">
+        ⚠️ 现状复现：旧版全屏单列 (横屏刷抖音)
+      </button>
+    </div>
+  </header>
+
+  <!-- 工作区 -->
+  <main id="workspace-container">
+    <div class="modal-frame">
+
+      <!-- 弹窗顶栏 -->
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <span class="modal-title">角色卡管理</span>
+          <span class="modal-subtitle">SillyTavern Desktop 沉浸式角色工作台</span>
+        </div>
+        <button class="modal-close-btn" title="关闭设置">✕</button>
+      </div>
+
+      <!-- ============================================== -->
+      <!-- 视图 A：现代化双栏工作台 (Master-Detail)        -->
+      <!-- ============================================== -->
+      <div id="view-modern" class="master-detail-body">
+
+        <!-- 左栏：角色画廊 (Master) -->
+        <aside class="master-sidebar">
+          <!-- 搜索与快捷创建 -->
+          <div class="master-tools">
+            <div class="search-input-wrap">
+              <span>🔍</span>
+              <input type="text" placeholder="搜索角色、设定或标签…" class="search-input" id="search-chars" oninput="filterChars(this.value)">
+            </div>
+            <div class="master-actions-row">
+              <button class="btn-create-char" onclick="alert('触发新建角色：直接在右侧进入空白草稿模式')">＋ 新建角色</button>
+              <button class="btn-import-char" onclick="alert('触发导入：支持 Tavern PNG / JSON 导入')">⤓ 导入卡片</button>
+            </div>
+          </div>
+
+          <!-- 角色列表卡片 -->
+          <div class="char-list-scroll" id="char-list">
+            <!-- 角色 1: Seraphina (激活) -->
+            <div class="char-item-card active" onclick="selectChar('seraphina', this)">
+              <div class="char-avatar-circle" style="background: linear-gradient(135deg, #dfbc7e, #98733f);">
+                S
+              </div>
+              <div class="char-meta-col">
+                <div class="char-name-row">
+                  <span class="char-name">Seraphina</span>
+                  <span class="char-token-badge">420 Tokens</span>
+                </div>
+                <p class="char-snippet">“若您已经连接好模型，不妨问我点什么……”</p>
+                <div class="char-tags-row">
+                  <span class="char-micro-tag">女仆长</span>
+                  <span class="char-micro-tag">庄园</span>
+                  <span class="char-micro-tag">傲娇</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 角色 2: Assistant -->
+            <div class="char-item-card" onclick="selectChar('assistant', this)">
+              <div class="char-avatar-circle" style="background: #2a2a36; color: #fff;">
+                ST
+              </div>
+              <div class="char-meta-col">
+                <div class="char-name-row">
+                  <span class="char-name">Assistant</span>
+                  <span class="char-token-badge">120 Tokens</span>
+                </div>
+                <p class="char-snippet">自动创建的系统默认角色，可以自由编辑。</p>
+                <div class="char-tags-row">
+                  <span class="char-micro-tag">通用助理</span>
+                  <span class="char-micro-tag">系统</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 角色 3: 埃森马克 -->
+            <div class="char-item-card" onclick="selectChar('eisen', this)">
+              <div class="char-avatar-circle" style="background: linear-gradient(135deg, #34d399, #065f46); color: #fff;">
+                埃
+              </div>
+              <div class="char-meta-col">
+                <div class="char-name-row">
+                  <span class="char-name">埃森马克</span>
+                  <span class="char-token-badge">860 Tokens</span>
+                </div>
+                <p class="char-snippet">“三号仓库的货运单据，已经被我烧掉了……”</p>
+                <div class="char-tags-row">
+                  <span class="char-micro-tag">前军医</span>
+                  <span class="char-micro-tag">苍白之城</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 角色 4: 克莱尔 -->
+            <div class="char-item-card" onclick="selectChar('claire', this)">
+              <div class="char-avatar-circle" style="background: linear-gradient(135deg, #fb7185, #881337); color: #fff;">
+                克
+              </div>
+              <div class="char-meta-col">
+                <div class="char-name-row">
+                  <span class="char-name">克莱尔</span>
+                  <span class="char-token-badge">680 Tokens</span>
+                </div>
+                <p class="char-snippet">“根据《隔离审查令》，你必须回答我的问题。”</p>
+                <div class="char-tags-row">
+                  <span class="char-micro-tag">特别监督官</span>
+                  <span class="char-micro-tag">暗线</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <!-- 右栏：角色工作台 (Detail Workbench) -->
+        <section class="detail-workbench">
+
+          <!-- 顶部看板 (Billboard)：头像、名字、Token与语义化操作组 -->
+          <div class="char-billboard">
+            <div class="billboard-left">
+              <div class="billboard-avatar-box" id="cur-avatar-box" title="点击上传新立绘或选择表情差分" style="background: linear-gradient(135deg, #dfbc7e, #98733f); display: grid; place-items: center; font-size: 26px; color: #17110b; font-weight: bold;">
+                S
+              </div>
+              <div class="billboard-meta">
+                <div class="billboard-title-line">
+                  <input type="text" value="Seraphina" class="billboard-name-input" id="cur-name" placeholder="角色名称">
+                  <span class="badge-version">v1.0.0</span>
+                  <span class="badge-version">ST Official</span>
+                </div>
+
+                <div class="billboard-token-meter">
+                  <div class="token-bar-track">
+                    <div class="token-bar-fill" id="cur-token-bar"></div>
+                  </div>
+                  <span id="cur-token-text">420 / 2,048 Tokens (永久)</span>
+                </div>
+
+                <div class="billboard-tags-pool" id="cur-tags-pool">
+                  <span class="tag-chip">女仆长 ✕</span>
+                  <span class="tag-chip">庄园 ✕</span>
+                  <span class="tag-chip">傲娇 ✕</span>
+                  <button class="btn-add-tag" onclick="alert('添加新标签')">＋ 标签</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 明确有力的操作组 (替换掉 8 个猜谜图标！) -->
+            <div class="billboard-actions">
+              <button class="btn-start-chat" onclick="alert('直接进入角色扮演对话舞台！')">
+                <span>💬 开始对话</span>
+              </button>
+              <button class="btn-action-ghost" onclick="alert('复制该角色副本')">
+                <span>⤢ 克隆</span>
+              </button>
+              <button class="btn-action-ghost" onclick="alert('导出 PNG / JSON')">
+                <span>⤓ 导出卡片</span>
+              </button>
+              <button class="btn-action-ghost btn-action-danger" onclick="alert('确认删除该角色卡？')">
+                <span>🗑️</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 双列自适应网格 (Two-Column Grid) —— 终结横屏刷抖音！ -->
+          <div class="editor-grid-scroll">
+
+            <!-- 左列：核心人设与性格 (静态设定) -->
+            <div class="editor-column">
+              <!-- 角色描述卡 -->
+              <div class="editor-card">
+                <div class="card-header-line">
+                  <span class="card-title">📝 角色描述与外貌设定 (Description)</span>
+                  <span class="card-tools" id="desc-token-count">约 180 Tokens</span>
+                </div>
+                <textarea class="card-textarea" id="cur-desc" rows="6" placeholder="描述角色的外貌、身世、核心性格特质与身体特征……">Seraphina 是红石庄园的女仆长。拥有柔顺的银色长发与琥珀色眼眸，身着剪裁优雅的深色古典女仆长裙。
+外表举止端庄严谨，但在面对亲近的人时偶尔会流露出难以掩饰的别扭与关心。精通草药调配与简易的安神治愈魔法。</textarea>
+                <span class="card-hint">💡 建议重点写明角色的外表、背景特征以及与用户的关系。</span>
+              </div>
+
+              <!-- 性格特质与说话风格 -->
+              <div class="editor-card">
+                <div class="card-header-line">
+                  <span class="card-title">💡 性格特征与说话习惯 (Personality)</span>
+                  <span class="card-tools">约 90 Tokens</span>
+                </div>
+                <textarea class="card-textarea" id="cur-personality" rows="3" placeholder="角色的性格关键词、语气口癖或行为准则……">冷静理智、嘴硬心软、高自尊心。说话措辞礼貌但偶尔带着轻微的嘲弄，在慌张时语速会变快。</textarea>
+              </div>
+
+              <!-- 创作者注释 -->
+              <div class="editor-card">
+                <div class="card-header-line">
+                  <span class="card-title">📌 创作者注释 (Creator Notes)</span>
+                  <span class="card-tools">仅作者可见</span>
+                </div>
+                <textarea class="card-textarea" id="cur-notes" rows="2" placeholder="用于提示此角色的最佳对练方式、温度建议等……">建议搭配温度 0.7 左右。适合中长篇庄园日常与奇幻冒险题材。</textarea>
+              </div>
+            </div>
+
+            <!-- 右列：交互舞台与生态关联 (动态设定) -->
+            <div class="editor-column">
+              <!-- 开场白卡片 -->
+              <div class="editor-card">
+                <div class="card-header-line">
+                  <span class="card-title">💬 开场白 (First Message)</span>
+                  <div class="greeting-switcher">
+                    <span class="greeting-tab active">开场白 #1</span>
+                    <span class="greeting-tab" onclick="alert('切换到备用开场白 #2')">开场白 #2</span>
+                    <button class="greeting-tab" onclick="alert('新建备用开场白')">＋</button>
+                  </div>
+                </div>
+                <textarea class="card-textarea" id="cur-first-mes" rows="6" placeholder="角色在每次对话开始时发送的第一条问候……">“您终于醒了吗？方才巡夜时长廊的烛火被风吹灭，我便顺道过来看看您……既然身子还乏，就请先把这盏热茶喝了吧，不要任性。”</textarea>
+                <span class="card-hint">💡 左右对照：左侧是人物设定，右侧是开场问候，无需上下翻找即可同步校对。</span>
+              </div>
+
+              <!-- 关联世界书 -->
+              <div class="editor-card">
+                <div class="card-header-line">
+                  <span class="card-title">🌐 关联世界书与知识库</span>
+                  <button class="greeting-tab" onclick="alert('打开世界书绑定列表')">＋ 绑定世界书</button>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                  <div class="lorebook-item">
+                    <span class="lorebook-name">📘 苍白之城编年史 (红石庄园部分)</span>
+                    <span class="lorebook-badge">已启用 12 条目 · <a>解除</a></span>
+                  </div>
+                  <div class="lorebook-item">
+                    <span class="lorebook-name">📘 通用药剂与草药设定集</span>
+                    <span class="lorebook-badge">已启用 4 条目 · <a>解除</a></span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 表情差分预览 -->
+              <div class="editor-card">
+                <div class="card-header-line">
+                  <span class="card-title">🎭 表情差分管理 (Sprites)</span>
+                  <button class="greeting-tab" onclick="alert('打开差分管理窗口')">管理差分包 (6)</button>
+                </div>
+                <div style="display:flex; gap:10px;">
+                  <div style="width:48px; height:48px; border-radius:8px; background:var(--dw-bg-input); border:1px solid var(--dw-border); display:grid; place-items:center; font-size:10px; color:var(--dw-text-muted);">默认</div>
+                  <div style="width:48px; height:48px; border-radius:8px; background:var(--dw-bg-input); border:1px solid var(--dw-border); display:grid; place-items:center; font-size:10px; color:var(--dw-text-muted);">羞赧</div>
+                  <div style="width:48px; height:48px; border-radius:8px; background:var(--dw-bg-input); border:1px solid var(--dw-border); display:grid; place-items:center; font-size:10px; color:var(--dw-text-muted);">警觉</div>
+                  <div style="width:48px; height:48px; border-radius:8px; background:var(--dw-bg-input); border:1px dashed var(--dw-border); display:grid; place-items:center; font-size:10px; color:var(--dw-text-dim); cursor:pointer;">＋</div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- 底部反馈 -->
+          <div class="modal-footer">
+            <span>自动同步已启用 · 修改后实时存入本地用户配置</span>
+            <span>当前选中角色: <strong style="color:var(--dw-accent-gold);" id="status-cur-char">Seraphina</strong></span>
+          </div>
+        </section>
+
+      </div>
+
+      <!-- ============================================== -->
+      <!-- 视图 B：旧版现状复现 (模拟横屏刷抖音痛点)       -->
+      <!-- ============================================== -->
+      <div id="view-legacy" class="legacy-view">
+        <div class="legacy-header-alert">
+          <span>⚠️ 现状体验复现：注意观察超宽的输入框、全屏纵向单列排版，以及右上方 8 个猜谜象形图标。</span>
+        </div>
+
+        <div class="legacy-block" style="display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; gap:16px; align-items:center;">
+            <div style="width:64px; height:64px; background:#222; border-radius:8px; display:grid; place-items:center;">ST</div>
+            <div>
+              <h2 style="font-size:16px; color:#fff;">Assistant</h2>
+              <p style="font-size:11px; color:#666;">（此区域左侧拥挤，右侧巨大黑斑留白……）</p>
+            </div>
+          </div>
+          <!-- 模拟原生 8 个象形图标 -->
+          <div style="display:flex; gap:6px;">
+            <button style="padding:6px; background:#222; border:1px solid #444; border-radius:4px; color:#aaa;">★</button>
+            <button style="padding:6px; background:#222; border:1px solid #444; border-radius:4px; color:#aaa;">🗎</button>
+            <button style="padding:6px; background:#222; border:1px solid #444; border-radius:4px; color:#aaa;">🌐</button>
+            <button style="padding:6px; background:#222; border:1px solid #444; border-radius:4px; color:#aaa;">📑</button>
+            <button style="padding:6px; background:#222; border:1px solid #444; border-radius:4px; color:#aaa;">😀</button>
+            <button style="padding:6px; background:#222; border:1px solid #444; border-radius:4px; color:#aaa;">🗋</button>
+            <button style="padding:6px; background:#222; border:1px solid #444; border-radius:4px; color:#aaa;">📋</button>
+            <button style="padding:6px; background:#222; border:1px solid #444; border-radius:4px; color:#aaa;">💀</button>
+          </div>
+        </div>
+
+        <div class="legacy-block">
+          <label style="font-size:12px; color:#888; display:block; margin-bottom:6px;">搜索/创建标签 (整行占满 1200px 宽度)：</label>
+          <input type="text" style="width:100%; padding:8px; background:#111; border:1px solid #333; color:#fff; border-radius:4px;" placeholder="标签...">
+        </div>
+
+        <div class="legacy-block">
+          <label style="font-size:12px; color:#888; display:block; margin-bottom:6px;">创作者的注释 (又是一整行)：</label>
+          <textarea style="width:100%; height:80px; background:#111; border:1px solid #333; color:#fff; border-radius:4px; padding:8px;"></textarea>
+        </div>
+
+        <div class="legacy-block">
+          <label style="font-size:12px; color:#888; display:block; margin-bottom:6px;">角色描述 (超长横向单行，眼睛来回扫视极易疲劳)：</label>
+          <textarea style="width:100%; height:120px; background:#111; border:1px solid #333; color:#fff; border-radius:4px; padding:8px;"></textarea>
+        </div>
+
+        <div class="legacy-block">
+          <label style="font-size:12px; color:#888; display:block; margin-bottom:6px;">开场白 (继续往下滑动……)：</label>
+          <textarea style="width:100%; height:120px; background:#111; border:1px solid #333; color:#fff; border-radius:4px; padding:8px;"></textarea>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- 演示交互交互驱动脚本 -->
+  <script>
+    const CHARACTERS = {
+      seraphina: {
+        name: 'Seraphina',
+        avatarBg: 'linear-gradient(135deg, #dfbc7e, #98733f)',
+        avatarText: 'S',
+        tokenBar: '25%',
+        tokenText: '420 / 2,048 Tokens (永久)',
+        tags: ['女仆长', '庄园', '傲娇'],
+        desc: `Seraphina 是红石庄园的女仆长。拥有柔顺的银色长发与琥珀色眼眸，身着剪裁优雅的深色古典女仆长裙。\n外表举止端庄严谨，但在面对亲近的人时偶尔会流露出难以掩饰的别扭与关心。精通草药调配与简易的安神治愈魔法。`,
+        personality: `冷静理智、嘴硬心软、高自尊心。说话措辞礼貌但偶尔带着轻微的嘲弄，在慌张时语速会变快。`,
+        notes: `建议搭配温度 0.7 左右。适合中长篇庄园日常与奇幻冒险题材。`,
+        firstMes: `“您终于醒了吗？方才巡夜时长廊的烛火被风吹灭，我便顺道过来看看您……既然身子还乏，就请先把这盏热茶喝了吧，不要任性。”`
+      },
+      assistant: {
+        name: 'Assistant',
+        avatarBg: '#2a2a36',
+        avatarText: 'ST',
+        tokenBar: '8%',
+        tokenText: '120 / 2,048 Tokens (永久)',
+        tags: ['通用助理', '系统卡'],
+        desc: `酒馆系统的内置默认助理。具备高超的语言理解与多语言翻译能力，擅长回答各类背景设定与提示词规则。`,
+        personality: `温和、耐心、逻辑严密，严格遵循用户的指令。`,
+        notes: `可用于快速测试模型连通性与参数设定。`,
+        firstMes: `“你好！我是系统内置的对练助理。有什么我可以帮你的吗？”`
+      },
+      eisen: {
+        name: '埃森马克',
+        avatarBg: 'linear-gradient(135deg, #34d399, #065f46)',
+        avatarText: '埃',
+        tokenBar: '45%',
+        tokenText: '860 / 2,048 Tokens (永久)',
+        tags: ['前军医', '苍白之城', '暗线'],
+        desc: `前特别医疗组军医。三年前在三号仓库的大火中偷换了第七实验体的死亡报告后辞职隐匿。常年披着磨损严重的深灰色军大衣，眼神敏锐而疲惫。`,
+        personality: `沉默寡言、警惕心强，对官方记录怀有本能的怀疑。习惯在说话前先观察周围的出入口。`,
+        notes: `涉及苍白之城暗线调查的核心主角。`,
+        firstMes: `“门先锁好。三号仓库那批货的底单我已经烧了，但执政官的人比我想象的来得更快……你确定没人跟着你吧？”`
+      },
+      claire: {
+        name: '克莱尔',
+        avatarBg: 'linear-gradient(135deg, #fb7185, #881337)',
+        avatarText: '克',
+        tokenBar: '35%',
+        tokenText: '680 / 2,048 Tokens (永久)',
+        tags: ['特别监督官', '执政官公署'],
+        desc: `执政官秘书处特别监督官。真实身份是第七实验体遗孤，为了追查当年真相伪装成冷酷的执行官。腰间悬挂着黑曜石特别印章。`,
+        personality: `外冷内热，手段果断，恪守公署条例的同时私下探寻真相。`,
+        notes: `拥有双重立场，可根据对练走势发生立场转变。`,
+        firstMes: `“坐下。根据《隔离审查令》第三条，我有权核查你本周内与前军医埃森的所有会面记录。”`
+      }
+    };
+
+    function selectChar(id, el) {
+      document.querySelectorAll('.char-item-card').forEach(c => c.classList.remove('active'));
+      el.classList.add('active');
+      const data = CHARACTERS[id];
+      if (!data) return;
+
+      document.getElementById('cur-name').value = data.name;
+      document.getElementById('status-cur-char').textContent = data.name;
+      const avatarBox = document.getElementById('cur-avatar-box');
+      avatarBox.style.background = data.avatarBg;
+      avatarBox.textContent = data.avatarText;
+
+      document.getElementById('cur-token-bar').style.width = data.tokenBar;
+      document.getElementById('cur-token-text').textContent = data.tokenText;
+
+      document.getElementById('cur-desc').value = data.desc;
+      document.getElementById('cur-personality').value = data.personality;
+      document.getElementById('cur-notes').value = data.notes;
+      document.getElementById('cur-first-mes').value = data.firstMes;
+
+      const tagsPool = document.getElementById('cur-tags-pool');
+      tagsPool.innerHTML = data.tags.map(t => `<span class="tag-chip">${t} ✕</span>`).join('') + `<button class="btn-add-tag" onclick="alert('添加新标签')">＋ 标签</button>`;
+    }
+
+    function switchView(mode) {
+      const isModern = mode === 'modern';
+      document.getElementById('btn-show-modern').classList.toggle('active', isModern);
+      document.getElementById('btn-show-legacy').classList.toggle('active', !isModern);
+      document.getElementById('view-modern').style.display = isModern ? 'grid' : 'none';
+      document.getElementById('view-legacy').classList.toggle('active', !isModern);
+    }
+
+    function filterChars(val) {
+      const q = val.trim().toLowerCase();
+      document.querySelectorAll('.char-item-card').forEach(card => {
+        const text = card.textContent.toLowerCase();
+        card.style.display = text.includes(q) ? 'flex' : 'none';
+      });
+    }
+  </script>
+</body>
+</html>

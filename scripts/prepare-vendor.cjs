@@ -66,6 +66,8 @@ async function main(){
     await run(zipTool,['a','-tzip',outZip,'.','-mx=5','-bso0'],stage);
     await fs.writeFile(indexPath,JSON.stringify({schema:1,version:manifest.version,commit,lockSha256:lockSha,zipSha256:await sha(outZip),files},null,2));
   }
+  if(!(await exists(stage)))await fs.cp(upstream,stage,{recursive:true,filter:src=>!['.git','data','config.yaml','backups'].includes(path.relative(upstream,src).split(path.sep)[0])});
+  await require('./prepare-frontend.cjs').prepareFrontend({resources:build,stage});
   await run('git',[...gitScope,'archive','--format=zip',`--output=${path.join(build,'SillyTavern-source.zip')}`,manifest.commit],upstream);
   const notices=[`SillyTavern ${manifest.version}\n${manifest.repository}\nCommit ${manifest.commit}\nAGPL-3.0\n\n`+await fs.readFile(path.join(upstream,'LICENSE'),'utf8'), '\n\nNODE.JS RUNTIME\n'+await fs.readFile(path.join(runtime,'LICENSE'),'utf8')];
   const deps=await inventory(path.join(upstream,'node_modules'),'',true);

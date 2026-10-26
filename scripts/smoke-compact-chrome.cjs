@@ -1,0 +1,53 @@
+'use strict';
+const {_electron:electron}=require('playwright-core');
+const {hiddenLaunch,assertHidden,captureHidden,resizeHidden,waitForBackend}=require('./hidden-electron.cjs');
+const fs=require('node:fs/promises'),path=require('node:path'),assert=require('node:assert/strict');
+const root=path.resolve(__dirname,'..'),output=path.join(root,'test-results'),home=path.join(output,'精简顶部验收 '+Date.now(),'app-home');
+let app,page;const errors=[],checks=[];
+async function mode(name){await page.locator('#dw-modebar [data-mode="'+name+'"]').click();}
+async function main(){
+  await fs.mkdir(home,{recursive:true});
+  const seed=JSON.parse(await fs.readFile(path.join(output,'agent-packaged.json'),'utf8'));
+  if(!path.resolve(seed.home).startsWith(output+path.sep))throw Error('Synthetic seed required');
+  const settings=JSON.parse(await fs.readFile(path.join(seed.home,'settings.json'),'utf8'));
+  await fs.writeFile(path.join(home,'settings.json'),JSON.stringify({current:settings.current}));
+  const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;
+  app=await electron.launch({executablePath:require('electron'),...hiddenLaunch([root,'--desktop-home='+home],env),timeout:60000});
+  page=await waitForBackend(app);page.on('pageerror',e=>errors.push(e.message));await page.waitForSelector('#dw-modebar');
+  const agent=s=>page.locator('#dw-agent').locator(s);
+  await page.waitForFunction(()=>document.querySelector('#dw-agent')?.shadowRoot?.querySelector('#agent-thread-name'));
+  assert.equal(await page.locator('#dw-rp-header').isVisible(),true);
+  assert.equal(await page.locator('#leftNavDrawerIcon').isVisible(),false);
+  assert.equal(await page.locator('#dw-native-settings').isVisible(),false);
+  const menu=await app.evaluate(({BrowserWindow,Menu,app},url)=>{
+    const w=BrowserWindow.getAllWindows().find(w=>w.webContents.getURL()===url);
+    app.__compactMenuCalls=0;Menu.prototype.popup=function(){app.__compactMenuCalls++;};
+    return {visible:w.isMenuBarVisible(),autoHide:w.isMenuBarAutoHide(),labels:Menu.getApplicationMenu().items.map(i=>i.label)};
+  },page.url());
+  assert.equal(menu.visible,false);assert.equal(menu.autoHide,true);assert.deepEqual(menu.labels,['酒馆','编辑','视图','帮助']);
+  await page.locator('[data-dw-action="app-menu"]').click();
+  await page.waitForFunction(()=>true);assert.equal(await app.evaluate(({app})=>app.__compactMenuCalls),1);checks.push('native-menu-collapsed-and-accessible');
+  await mode('agent');assert.equal(await page.locator('#top-settings-holder').isVisible(),false);
+  assert.ok(await page.locator('#sheld').evaluate(n=>n.getBoundingClientRect().top<1));
+  assert.equal(await page.locator('#dw-save').isVisible(),false);
+  assert.equal(await page.locator('[data-dw-action="chat-to-novel"]').isVisible(),false);
+  const geometry=await agent('#agent-main').evaluate(n=>{const s=n.getRootNode(),r=n.getBoundingClientRect(),t=s.querySelector('#agent-threadbar').getBoundingClientRect(),bar=s.querySelector('#agent-toolbar');return {top:r.top,titleTop:t.top,merged:bar.parentElement.id==='agent-threadbar',overflow:s.querySelector('#agent-chat').scrollWidth>s.querySelector('#agent-chat').clientWidth};});
+  assert.ok(geometry.merged&&Math.abs(geometry.top-geometry.titleTop)<1&&!geometry.overflow);checks.push('agent-toolbar-merged-with-discussion');
+  await agent('#agent-workspace').click();assert.equal(await agent('#agent-sidebar').isVisible(),false);await agent('#agent-workspace').click();assert.equal(await agent('#agent-sidebar').isVisible(),true);
+  await agent('#agent-toolbar [data-action="files"]').click();assert.equal(await agent('#agent-files-panel').isVisible(),false);await agent('#agent-toolbar [data-action="files"]').click();checks.push('panels-remain-accessible');
+  await agent('#agent-model').click();assert.equal(await page.locator('#top-settings-holder').isVisible(),true);await page.locator('#rm_api_block').waitFor({state:'visible'});
+  assert.equal(await page.locator('#dw-native-settings').getAttribute('aria-expanded'),'true');await page.locator('#dw-native-settings').click();assert.equal(await page.locator('#top-settings-holder').isVisible(),false);
+  await page.locator('#dw-native-settings').click();assert.equal(await page.locator('#top-settings-holder').isVisible(),true);await page.locator('#dw-native-settings').click();checks.push('model-connection-and-native-settings-toggle');
+  await resizeHidden(app,page,{width:1600,height:950});await captureHidden(app,page,path.join(output,'compact-agent.png'));
+  await mode('writing');assert.equal(await page.locator('#top-settings-holder').isVisible(),false);
+  const writing=await page.evaluate(()=>{const p=document.querySelector('#dw-project').getBoundingClientRect(),v=document.querySelector('#dw-viewbar button').getBoundingClientRect();return {projectTop:p.top,viewTop:v.top,parents:document.querySelector('#dw-projectbar').parentElement===document.querySelector('#dw-viewbar').parentElement};});
+  assert.ok(writing.parents&&Math.abs(writing.projectTop-writing.viewTop)<10);checks.push('novel-project-and-view-actions-one-row');
+  await page.locator('#dw-viewbar [data-view="discussion"]').click();assert.equal(await page.locator('#dw-workbench').getAttribute('data-view'),'discussion');
+  await page.locator('#dw-viewbar [data-view="body"]').click();assert.equal(await page.locator('#dw-workbench').getAttribute('data-view'),'body');
+  await page.locator('#dw-viewbar [data-view="workbench"]').click();await captureHidden(app,page,path.join(output,'compact-writing.png'));checks.push('novel-view-switching');
+  await resizeHidden(app,page,{width:800,height:700});await mode('agent');assert.ok(await agent('#agent-chat').evaluate(n=>n.scrollWidth<=n.clientWidth+1));checks.push('compact-width-no-chat-overflow');
+  await mode('rp');assert.equal(await page.locator('#dw-rp-header').isVisible(),true);assert.equal(await page.locator('#leftNavDrawerIcon').isVisible(),false);assert.equal(await page.locator('#dw-native-settings').isVisible(),false);assert.equal(await page.locator('[data-dw-action="chat-to-novel"]').isVisible(),false);checks.push('roleplay-compact-header-restored');
+  assert.deepEqual(errors,[]);await assertHidden(app);await page.evaluate(()=>window.SillyTavernDesktopWriting.prepareToLeave());await app.close();app=null;
+  await fs.writeFile(path.join(output,'compact-chrome.json'),JSON.stringify({date:new Date().toISOString(),home,passed:true,hidden:true,checks,pageErrors:errors,menuPopup:'Intercepted; native popup not shown or visually tested.'},null,2));console.log('Compact chrome: '+checks.length+' focused checks passed, no visible/focused windows.');
+}
+main().catch(async e=>{console.error(e.stack);if(app&&page)await captureHidden(app,page,path.join(output,'compact-failure.png')).catch(()=>{});if(app)await app.close().catch(()=>{});process.exitCode=1;});

@@ -56,13 +56,43 @@ async function assertNoExternalServer(installation) {
     if (!row.CommandLine) throw fail('存在无法确认归属的 Node 进程，无法安全启动旧安装。请关闭旧酒馆，或改用全新独立配置。');
     const cmd = row.CommandLine.toLowerCase();
     if (/server(?:-global)?\.js/.test(cmd) || cmd.includes(installation.dataRoot.toLowerCase())) {
+      if (separateDesktopBackend(row.CommandLine, installation)) {
+        const args = [...row.CommandLine.matchAll(/"([^"\r\n]*)"|([^\s"]+)/g)].map(match => match[1] ?? match[2]);
+        // Resolve no aliases through junctions/symlinks when proving separation.
+        try {
+          const targets = [path.dirname(args[2]), args[args.indexOf('--dataRoot') + 1], args[args.indexOf('--configPath') + 1], installation.root, installation.dataRoot, installation.configPath];
+          const canonical=[];for(const target of targets)canonical.push((await fs.realpath(await noLinks(target))).toLowerCase());
+          const overlaps=(a,b)=>a===b||a.startsWith(b+path.sep)||b.startsWith(a+path.sep);
+          // realpath also prevents differing Windows short-name spellings from
+          // disguising the same existing data directory as a separate profile.
+          if(!overlaps(canonical[0],canonical[3])&&!overlaps(canonical[1],canonical[4])&&canonical[2]!==canonical[5])continue;
+        } catch { /* Cannot prove isolation. */ }
+      }
       throw fail('检测到已有 Node 后端服务。请先用原方式关闭旧酒馆后重试；本应用不会复用或终止其他进程。');
     }
   }
+}
+function separateDesktopBackend(command, installation) {
+  // Only recognize our unambiguous supervisor command shape. Relative/global/unknown
+  // native launches remain conservative. Repeated flags cannot prove separation.
+  if (typeof command !== 'string' || !/^(?:"[^"\r\n]*"|[^\s"\r\n]+)(?:\s+(?:"[^"\r\n]*"|[^\s"\r\n]+))*$/.test(command)) return false;
+  const args = [...command.matchAll(/"([^"\r\n]*)"|([^\s"]+)/g)].map(match => match[1] ?? match[2]);
+  const normalize = value => path.win32.resolve(value).toLowerCase();
+  const absolute = value => typeof value === 'string' && /^[a-z]:[\\/]/i.test(value);
+  if (!absolute(args[0]) || !absolute(args[1]) || !/[\\/](?:supervisor|services)[\\/]runner\.cjs$/i.test(args[1]) || !absolute(args[2]) || !/[\\/]server\.js$/i.test(args[2])) return false;
+  const flag = name => { const indices = args.flatMap((arg, index) => arg === name ? [index] : []); return indices.length === 1 && absolute(args[indices[0] + 1]) ? args[indices[0] + 1] : null; };
+  const data = flag('--dataRoot'), config = flag('--configPath');
+  if (!data || !config || args.includes('--global') || args.some(arg => arg.startsWith('--dataRoot=') || arg.startsWith('--configPath='))) return false;
+  const expected = { '--configPath': config, '--dataRoot': data, '--browserLaunchEnabled': 'false', '--listen': 'false', '--listenAddressIPv4': '127.0.0.1', '--enableIPv4': 'true', '--enableIPv6': 'false', '--disableCsrf': 'false', '--ssl': 'false' };
+  if (args.length !== 23) return false;
+  const visited = new Set();
+  for (let n = 3; n < args.length; n += 2) { const key = args[n]; if (visited.has(key) || (key === '--port' ? !/^\d{1,5}$/.test(args[n+1]) : expected[key] === undefined || expected[key] !== args[n+1])) return false; visited.add(key); }
+  const overlaps = (a,b) => { a=normalize(a); b=normalize(b); return a===b || a.startsWith(b+'\\') || b.startsWith(a+'\\'); };
+  return !overlaps(path.win32.dirname(args[2]), installation.root) && !overlaps(data, installation.dataRoot) && normalize(config) !== normalize(installation.configPath);
 }
 function argsFor(i, port) {
   return [path.join(i.root,'server.js'), ...(i.mode === 'global' ? ['--global'] : ['--configPath',i.configPath,'--dataRoot',i.dataRoot]),
     '--browserLaunchEnabled','false','--listen','false','--listenAddressIPv4','127.0.0.1','--enableIPv4','true','--enableIPv6','false',
     '--disableCsrf','false','--ssl','false','--port',String(port)];
 }
-module.exports = { inspect, discover, assertNoExternalServer, argsFor };
+module.exports = { inspect, discover, assertNoExternalServer, argsFor, separateDesktopBackend };

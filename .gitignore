@@ -9,3 +9,5 @@ test-results/
 *.local.json
 .release/
 *.pem
+*.lnk
+docs/*.local.md

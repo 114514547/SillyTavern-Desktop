@@ -1,8 +1,8 @@
 {
   "name": "sillytavern-desktop",
-  "version": "0.2.0",
+  "version": "0.5.0",
   "private": true,
-  "description": "原版 SillyTavern Windows 桌面外壳",
+  "description": "SillyTavern Windows 桌面版与原生风格小说创作扩展",
   "author": "SillyTavern Desktop contributors",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -15,6 +15,9 @@
     "test": "node --test tests/*.test.cjs",
     "test:integration": "node --test tests/integration/*.test.cjs",
     "test:desktop": "node scripts/smoke-desktop.cjs",
+    "test:writing": "node scripts/smoke-writing.cjs",
+    "test:discussion": "node scripts/smoke-discussion.cjs",
+    "test:agent": "node scripts/smoke-agent.cjs",
     "check": "node scripts/check.cjs",
     "prepare:vendor": "node scripts/prepare-vendor.cjs",
     "build:win": "npm run prepare:vendor && electron-builder --win nsis --x64 --publish never",

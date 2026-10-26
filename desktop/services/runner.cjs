@@ -14,7 +14,7 @@ process.on('disconnect',shutdown);
 const target=process.argv[2];
 process.argv=[process.execPath,...process.argv.slice(2)];
 if(!target) process.exit(2);
-import(pathToFileURL(target).href).catch(error=>{
+Promise.resolve().then(()=>require('./startup-runtime.cjs').installStartupRuntime({target,dataRoot:process.env.ST_DESKTOP_CACHE_DATA_ROOT,cacheEnabled:process.env.ST_DESKTOP_STARTUP_CACHE==='1',frontendResources:process.env.ST_DESKTOP_FRONTEND_RESOURCES})).then(()=>import(pathToFileURL(target).href)).catch(error=>{
   const codes={ERR_MODULE_NOT_FOUND:'missing-dependency',MODULE_NOT_FOUND:'missing-dependency',EACCES:'permission-denied',ENOSPC:'disk-full'};
   if(codes[error.code])process.send?.({type:'diagnostic',code:codes[error.code]});
   process.send?.({type:'failed'},()=>process.exit(1));

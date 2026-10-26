@@ -1,0 +1,5 @@
+/* Deterministic stylesheet entry. No runtime style injection. */
+@import url('./design-system.css');
+@import url('./modern-ui.css');
+@import url('./native-ui.css');
+@import url('./character-manager.css');

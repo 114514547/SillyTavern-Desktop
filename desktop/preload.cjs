@@ -3,6 +3,7 @@ const {contextBridge,ipcRenderer}=require('electron');
 // Available only on the bundled launcher, never on the SillyTavern web page.
 contextBridge.exposeInMainWorld('desktop',Object.freeze({
   state:()=>ipcRenderer.invoke('launcher:state'),
+  discover:()=>ipcRenderer.invoke('launcher:discover'),
   choose:()=>ipcRenderer.invoke('launcher:choose'),
   inspect:options=>ipcRenderer.invoke('launcher:inspect',options),
   plan:()=>ipcRenderer.invoke('launcher:plan'),

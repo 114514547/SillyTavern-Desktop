@@ -1,0 +1,77 @@
+/* Native compatibility boundary. Keep IDs, event bindings and conditional visibility. */
+body.dw-settings-open #dw-settings-modal #top-settings-holder{display:block!important;position:static!important;inset:auto!important;width:100%!important;max-width:none!important;height:auto!important;padding:0!important;transform:none!important;background:none!important;pointer-events:auto!important}
+#dw-settings-modal #top-settings-holder>.drawer{display:none!important;width:100%}#dw-settings-modal #top-settings-holder>.drawer[data-dw-settings-active]{display:block!important}#dw-settings-modal #top-settings-holder>.drawer>.drawer-toggle{display:none!important}
+#dw-settings-modal #top-settings-holder>.drawer>.drawer-content{position:static!important;inset:auto!important;display:block!important;width:100%!important;min-width:0!important;max-width:none!important;height:auto!important;min-height:0!important;max-height:none!important;margin:0!important;padding:0!important;overflow:visible!important;transform:none!important;transition:none!important;border:0!important;border-radius:0!important;background:none!important;box-shadow:none!important;container:settings-editor / inline-size}
+#dw-settings-modal #top-settings-holder>.drawer>#Backgrounds{display:flex!important}
+#dw-settings-modal :is(.drag-grabber,.drawer-icon,.inline-drawer-maximize,[id$="_pin_div"],.editable-slider-notification){display:none!important}#dw-settings-modal :is(.scrollableInner,.scrollableInnerFull){height:auto!important;max-height:none!important;overflow:visible!important}
+#dw-settings-modal .dw-native-surface :is(.panel,.shadow_background,.inline-drawer,.bracket-holder,fieldset){background:var(--dw-bg-panel);background-image:none;border:1px solid var(--dw-border);border-radius:var(--dw-radius);box-shadow:none;padding:14px;margin-bottom:12px}
+#dw-settings-modal .dw-native-surface :is(.inline-drawer-header,.standoutHeader,.title_rest,.title_restorable){background:transparent;background-image:none;border:0;border-bottom:1px solid var(--dw-border);border-radius:0;padding:10px 0;margin:0 0 10px;box-shadow:none;color:var(--dw-text-main);font-size:calc(var(--dw-ui-size) * 0.92308);font-weight:600;text-shadow:none;filter:none}
+#dw-settings-modal .dw-native-surface .inline-drawer-header{cursor:pointer}#dw-settings-modal .dw-native-surface .inline-drawer-content{padding:8px 0}
+#dw-settings-modal .dw-native-surface :is(.flex1,.flex2,.flex3,.flex-container,.range-block,.range-block-range-and-counter,.title_restorable,.buttons_block){min-width:0;max-width:100%;box-sizing:border-box}
+#dw-settings-modal .dw-native-surface :is(input,select,textarea){font:calc(var(--dw-ui-size) * 0.92308)/1.6 var(--dw-font);max-width:100%;box-sizing:border-box;color:var(--dw-text-main)}
+#dw-settings-modal .dw-native-surface :is(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]),select,textarea){border:1px solid var(--dw-border);border-radius:6px;padding:7px 9px;background:var(--dw-bg-input);box-shadow:none}
+#dw-settings-modal .dw-native-surface textarea{width:100%}#dw-settings-modal .dw-native-surface :is(input[type=checkbox],input[type=radio]){width:15px;height:15px;flex-shrink:0;accent-color:var(--dw-accent-gold)}
+#dw-settings-modal .dw-native-surface input[type=range]{accent-color:var(--dw-accent-gold);box-shadow:none}#dw-settings-modal .dw-native-surface input[type=range]::-webkit-slider-thumb{background:var(--dw-accent-gold);border:0;width:13px;height:13px}
+#dw-settings-modal .dw-native-surface :is(.menu_button,button){border:1px solid var(--dw-border);background:var(--dw-bg-card);color:var(--dw-text-main);border-radius:6px;box-shadow:none;text-shadow:none;filter:none;font-size:calc(var(--dw-ui-size) * 0.84615)}
+#dw-settings-modal .dw-native-surface :is(.menu_button,button):hover{background:var(--dw-bg-hover);border-color:var(--dw-accent-gold)}
+#dw-settings-modal .dw-native-surface :is(.checkbox_label,.flexnowrap,.flexNoWrap,.title_restorable,.buttons_block){flex-wrap:wrap;gap:8px}#dw-settings-modal .dw-native-surface .checkbox_label{align-items:center;margin:8px 0;font-size:calc(var(--dw-ui-size) * 0.92308)}#dw-settings-modal .dw-native-surface :is(small,.notes,.toggle-description){color:var(--dw-text-muted);line-height:1.7}
+.dw-native-toolbar{position:sticky;top:-24px;z-index:5;display:flex;gap:12px;padding:12px 0;margin-bottom:14px;background:var(--dw-bg-base);border-bottom:1px solid var(--dw-border)}.dw-native-toolbar input{flex:1}.dw-native-toolbar select{max-width:230px}.dw-native-search-results{display:flex;flex-direction:column;gap:4px;padding:12px;border:1px solid var(--dw-border);border-radius:8px;margin-bottom:16px;font-size:calc(var(--dw-ui-size) * 0.84615)}.dw-native-search-results button{text-align:left;white-space:normal}.dw-setting-highlight{outline:2px solid var(--dw-accent-gold);outline-offset:4px}
+#dw-settings-modal :is(#ContextSettings,#InstructSettingsColumn,#SystemPromptColumn,#user-settings-block-content,#persona-management-block){gap:18px}#dw-settings-modal :is(#user-settings-block-content,#persona-management-block){flex-wrap:wrap}
+#dw-settings-modal #bg-header-fixed{position:static;padding:12px 0;background:var(--dw-bg-base)}#dw-settings-modal :is(.bg-header-row-1,.bg-header-row-2,#bg_folder_breadcrumb){flex-wrap:wrap;gap:8px}#dw-settings-modal #bg_tabs .heading-controls{position:static;transform:none;flex-wrap:wrap}#dw-settings-modal #bg-filter{flex:1;min-width:100px}#dw-settings-modal :is(#bg_menu_content,#bg_custom_content){grid-template-columns:repeat(auto-fill,minmax(110px,1fr))}
+#dw-settings-modal :is(#rm_ch_create_block,#rm_group_chats_block){padding:8px 0;height:auto;overflow:visible}
+#dw-settings-modal #form_create{height:auto;overflow:visible}
+#dw-settings-modal #avatar-and-name-block{display:block}
+#dw-settings-modal #name_div{width:100%}
+#dw-settings-modal #avatar_div{display:grid;grid-template-columns:96px minmax(0,1fr);gap:20px;margin:16px 0;align-items:start}
+#dw-settings-modal #avatar_div_div{width:96px;height:128px;margin:0;align-self:start!important}
+#dw-settings-modal #avatar_load_preview{width:96px;height:128px;object-fit:cover;border-radius:var(--dw-radius)}
+#dw-settings-modal #avatar_controls{min-width:0;width:auto;gap:12px;align-content:start}
+#dw-settings-modal #CharListButtonAndHotSwaps{align-items:center;gap:12px;margin-bottom:12px}
+#dw-settings-modal #CharListButtonAndHotSwaps>.flexFlowColumn{flex-direction:row}
+#dw-settings-modal #CharListButtonAndHotSwaps .hotswap:empty{display:none}
+#dw-settings-modal #HotSwapWrapper{min-height:0;height:auto}
+#dw-settings-modal #right-nav-panel-tabs{padding:8px 0;align-items:center}
+#dw-settings-modal :is(.character_select,.group_select,.persona-container){border-radius:var(--dw-radius);border:1px solid var(--dw-border);background:var(--dw-bg-panel)}#dw-settings-modal :is(.character_select,.group_select):hover{border-color:var(--dw-accent-gold)}#dw-settings-modal .range-block{padding:12px 0;gap:10px;border-bottom:1px solid var(--dw-border-subtle)}
+#dw-settings-modal .range-block-title{width:100%;text-align:left;font-size:calc(var(--dw-ui-size) * 0.92308);color:var(--dw-text-muted)}
+#dw-settings-modal .range-block-range-and-counter{display:flex;flex:1 1 100%;width:100%;min-width:0;gap:12px}
+#dw-settings-modal .range-block-range{flex:1 1 0;min-width:0}
+#dw-settings-modal .range-block-counter{flex:0 0 90px;min-width:0;margin:0}
+#dw-settings-modal .range-block-counter input{width:90px;min-width:0;text-align:right}
+#dw-settings-modal .dw-native-surface .topRightInset{position:static;float:right;padding:4px}
+#dw-settings-modal .dw-native-surface *{box-sizing:border-box}
+
+/* Nested native editors, menus and dynamically generated extension content. */
+body.dw-desktop dialog.popup{border:1px solid var(--dw-border);border-radius:calc(var(--dw-radius) + 4px);background:var(--dw-bg-panel);color:var(--dw-text-main);box-shadow:0 24px 70px #000c;font:var(--dw-ui-size)/1.7 var(--dw-font)}body.dw-desktop dialog.popup::backdrop{background:#000a;backdrop-filter:blur(var(--dw-blur))}
+body.dw-desktop dialog.popup :is(input:not([type=checkbox]):not([type=radio]):not([type=range]),select,textarea){background:var(--dw-bg-input);border:1px solid var(--dw-border);border-radius:6px;color:var(--dw-text-main);font:inherit;box-shadow:none}body.dw-desktop dialog.popup :is(.menu_button,.popup-button){background:var(--dw-bg-card);border:1px solid var(--dw-border);border-radius:6px;color:var(--dw-text-main);box-shadow:none;text-shadow:none}body.dw-desktop dialog.popup :is(.popup-content,.popup-body){text-align:left}
+body.dw-desktop :is(#options,#extensionsMenu,.autocomplete,.slashCommandAutoComplete){background:var(--dw-bg-panel);color:var(--dw-text-main);border:1px solid var(--dw-border);border-radius:var(--dw-radius);box-shadow:var(--dw-glass-shadow);font:calc(var(--dw-ui-size) * 0.92308)/1.7 var(--dw-font)}body.dw-desktop #options a{padding:8px 12px}body.dw-desktop #options a:hover{background:var(--dw-bg-hover);color:var(--dw-accent-gold)}
+body.dw-desktop .select2-container{max-width:100%;min-width:0;font:calc(var(--dw-ui-size) * 0.92308) var(--dw-font)}body.dw-desktop :is(.select2-selection,.select2-dropdown,.select2-search__field){background:var(--dw-bg-input);color:var(--dw-text-main);border-color:var(--dw-border);border-radius:6px}body.dw-desktop .select2-selection__rendered{color:var(--dw-text-main)!important;line-height:26px!important}
+body.dw-desktop .select2-container .select2-selection{min-height:34px;height:auto}
+body.dw-desktop .select2-container .select2-selection--multiple .select2-selection__rendered{display:flex;flex-wrap:wrap;align-items:center;padding:3px 8px}
+body.dw-desktop .select2-container .select2-search__field{min-height:24px;margin:0;padding:2px 4px}
+body.dw-desktop .select2-results__option--highlighted[aria-selected]{background:var(--dw-bg-hover);color:var(--dw-accent-gold)}
+body.dw-desktop #toast-container>.toast{background:var(--dw-bg-card);color:var(--dw-text-main);border:1px solid var(--dw-border);border-radius:var(--dw-radius);box-shadow:var(--dw-glass-shadow);font:calc(var(--dw-ui-size) * 0.92308)/1.7 var(--dw-font);opacity:1;background-repeat:no-repeat;background-position:14px center;background-size:20px;padding-left:44px}body.dw-desktop #toast-container>.toast-error{border-color:var(--dw-danger)}
+@container settings-editor (max-width:700px){#dw-settings-modal :is(#ContextSettings,#InstructSettingsColumn,#SystemPromptColumn,#user-settings-block-content>div,#persona-management-block>div){flex:1 1 100%;width:100%}#dw-settings-modal :is(#context_presets,#instruct_presets,#sysprompt_presets){width:100%}}
+
+/* Native conversation controls keep their own visibility and event bindings. */
+body.dw-rp-mode #chat .mes .ch_name{align-items:center;gap:8px;flex-wrap:wrap;min-height:20px}
+body.dw-rp-mode #chat .timestamp{color:var(--dw-text-dim);font-size:10px;font-weight:400}
+body.dw-rp-mode #chat .mes_buttons{max-width:100%;opacity:.25;transition:opacity .15s}
+body.dw-rp-mode #chat .mes:is(:hover,:focus-within) .mes_buttons{opacity:1}
+body.dw-rp-mode #chat .mes_button{font-size:12px;filter:none;padding:3px 4px}
+body.dw-rp-mode #chat .mes_block .edit_textarea{width:100%;min-height:100px;font:var(--dw-prose-size)/1.85 var(--dw-font);background:var(--dw-bg-input);color:var(--dw-text-main);border:1px solid var(--dw-border);border-radius:8px;padding:10px}
+body.dw-rp-mode #chat .mes.smallSysMes .mes_block{max-width:100%;background:transparent;border-style:dashed;color:var(--dw-text-muted)}
+body.dw-rp-mode #nonQRFormItems{align-items:flex-end;gap:8px;font-size:18px}
+body.dw-rp-mode :is(#leftSendForm,#rightSendForm){gap:6px;align-items:center}
+body.dw-rp-mode #send_but{background:var(--dw-accent-gold);color:var(--dw-bg-base);border-radius:8px;min-width:44px;min-height:36px;padding:10px;box-sizing:border-box;text-align:center;font-size:16px}
+body.dw-rp-mode #send_but:hover{background:var(--dw-accent-gold-hover)}
+body.dw-rp-mode #send_textarea::placeholder{color:var(--dw-text-dim)}
+body.dw-rp-mode #chat .mes_text :is(p,ul,ol){margin-top:0;margin-bottom:12px}body.dw-rp-mode #chat .mes_text>:last-child{margin-bottom:0}
+@media(max-width:800px){body.dw-rp-mode #chat{padding:20px 14px}body.dw-rp-mode #form_sheld{padding:10px 14px 16px}#dw-rp-title{flex:1;max-width:none}#dw-rp-controls [data-rp-action=model]{display:none}#dw-rp-header{gap:4px;padding:0 10px}}
+
+/* Desktop RP owns the message layout even when a saved native document style is active. */
+body.dw-rp-mode.documentstyle #chat .mes:not(.last_mes){padding:0}
+body.dw-rp-mode.documentstyle #chat .mes .mes_block{margin-right:0}
+body.dw-rp-mode.documentstyle #chat .mes .mes_text{margin-left:0;min-height:0}
+body.dw-rp-mode.documentstyle:not(.hideChatAvatars) #chat .mes .mesAvatarWrapper{display:block!important}
+body.dw-rp-mode.documentstyle #chat .mes .mes_block .ch_name .name_text{display:inline!important}
+body.dw-rp-mode.documentstyle #chat .mes:not(.last_mes) .ch_name .mes_buttons{display:flex!important}

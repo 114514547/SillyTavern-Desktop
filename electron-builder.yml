@@ -17,6 +17,8 @@ files:
   - UPDATE.md
   - TEST_RESULTS.md
 extraResources:
+  - from: build/frontend
+    to: frontend
   - from: build/backend.zip
     to: backend.zip
   - from: build/backend-files.json
@@ -30,6 +32,8 @@ extraResources:
       - runner.cjs
       - lock.cjs
       - files.cjs
+      - startup-runtime.cjs
+      - frontend-cache.cjs
   - from: build/THIRD-PARTY-NOTICES.txt
     to: THIRD-PARTY-NOTICES.txt
   - from: build/SillyTavern-source.zip

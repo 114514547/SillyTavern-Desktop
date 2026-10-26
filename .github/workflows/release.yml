@@ -30,6 +30,9 @@ jobs:
       - run: npm test
       - run: npm run test:updates
       - run: npm run test:integration
+      - run: npm run test:writing
+      - run: npm run test:discussion
+      - run: npm run test:agent
       - run: npm run build:win
       - name: Sign update manifest
         run: npm run release:sign

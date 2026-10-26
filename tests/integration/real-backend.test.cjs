@@ -7,10 +7,10 @@ test('bundled upstream: CSRF, card/world import, presets, mock API, chat and res
   const home=path.resolve(__dirname,'../../test-results/真实后端 中文 '+Date.now());
   const logs=[];const managed=new Managed({home,resources:path.resolve(__dirname,'../../build'),manifest,onStatus:s=>logs.push(s)});
   await managed.initialize();const profile=await managed.create();
-  const runtime=await managed.node();const lifecycle=new Lifecycle({node:runtime,services:path.resolve(__dirname,'../../desktop/services'),onStatus:s=>logs.push(s)});
+  const phases=[];const runtime=await managed.node();const lifecycle=new Lifecycle({node:runtime,services:path.resolve(__dirname,'../../desktop/services'),preferredPort:0,onStatus:s=>logs.push(s),onPhase:phase=>phases.push(phase)});
   const mock=http.createServer(async(req,res)=>{for await(const _ of req){}res.setHeader('Content-Type','application/json');res.end(JSON.stringify({id:'desktop-test',choices:[{message:{role:'assistant',content:'模拟回复成功'},finish_reason:'stop'}]}));});
   mock.listen(0,'127.0.0.1');await once(mock,'listening');
-  let active=await lifecycle.start(await inspect(profile.root,profile),{skipExternalCheck:true});
+  let active=await lifecycle.start(await inspect(profile.root,profile),{skipExternalCheck:true,useStartupCache:true});
   let jar=new Map(),token;
   async function request(endpoint,body,csrf=true){
     const headers={};if(jar.size)headers.Cookie=[...jar].map(([k,v])=>k+'='+v).join('; ');if(token&&csrf)headers['x-csrf-token']=token;
@@ -36,19 +36,41 @@ test('bundled upstream: CSRF, card/world import, presets, mock API, chat and res
     assert.equal(answer.choices?.[0]?.message?.content,'模拟回复成功','mock API round trip');
     await json('/api/chats/save',{avatar_url:avatar,file_name:'desktop-test',force:true,chat:[{user_name:'User',character_name:'桌面测试角色',chat_metadata:{}},{name:'桌面测试角色',is_user:false,mes:answer.choices[0].message.content}]});
     await lifecycle.stop();
-    active=await lifecycle.start(await inspect(profile.root,profile),{skipExternalCheck:true});jar=new Map();token=(await json('/csrf-token')).token;
+    assert.ok(phases.includes('frontend-cache-saved'),'first compilation creates a verified receipt');phases.length=0;
+    active=await lifecycle.start(await inspect(profile.root,profile),{skipExternalCheck:true,useStartupCache:true});jar=new Map();token=(await json('/csrf-token')).token;
+    assert.ok(phases.includes('frontend-cache-hit'),'restart uses the verified frontend');assert.ok(!phases.includes('webpack-constructor-start'),'no compiler on a verified hit');
     const persisted=await json('/api/settings/get',{});assert.equal(JSON.parse(persisted.settings).desktop_test_marker,'persisted');assert.ok(persisted.world_names.includes('desktop-world'));assert.ok(persisted.openai_setting_names.includes('Desktop Test'));
     const chat=await json('/api/chats/get',{avatar_url:avatar,file_name:'desktop-test'});assert.equal(chat[1].mes,'模拟回复成功');
     await lifecycle.stop();
+    const {readFrontendCache,receiptPath}=require('../../desktop/services/frontend-cache.cjs');
+    const output=await readFrontendCache(profile);assert.ok(output);const outputBytes=await fs.readFile(output);
+    const librarySource=path.join(profile.root,'public/lib.js');const sourceBytes=await fs.readFile(librarySource);
+    const middleware=path.join(profile.root,'src/middleware/webpack-serve.js');const middlewareBytes=await fs.readFile(middleware);
+    for(const scenario of ['output-corruption','source-change','receipt-corruption','unknown-upstream']){
+      if(scenario==='output-corruption')await fs.writeFile(output,'invalid synthetic bundle');
+      if(scenario==='source-change')await fs.appendFile(librarySource,'\n// isolated cache invalidation fixture\n');
+      if(scenario==='receipt-corruption')await fs.writeFile(receiptPath(profile.dataRoot),'invalid receipt');
+      if(scenario==='unknown-upstream')await fs.appendFile(middleware,'\n// modified upstream must stay native\n');
+      phases.length=0;active=await lifecycle.start(await inspect(profile.root,profile),{skipExternalCheck:true,useStartupCache:true});jar=new Map();token=(await json('/csrf-token')).token;
+      assert.ok(!phases.includes('frontend-cache-hit'),scenario+' must fall back to native startup');
+      assert.ok(phases.includes(scenario==='unknown-upstream'?'startup-instrumentation-skipped':'frontend-cache-saved'),scenario+' fallback');
+      const library=await request('/lib.js');assert.equal(library.status,200);assert.deepEqual(Buffer.from(await library.arrayBuffer()),outputBytes,scenario+' serves the correct compiled library');
+      assert.equal(JSON.parse((await json('/api/settings/get',{})).settings).desktop_test_marker,'persisted',scenario+' settings remain readable');
+      assert.equal((await json('/api/chats/get',{avatar_url:avatar,file_name:'desktop-test'}))[1].mes,'模拟回复成功',scenario+' chat remains readable');
+      await lifecycle.stop();
+      if(scenario==='source-change')await fs.writeFile(librarySource,sourceBytes);
+      if(scenario==='unknown-upstream')await fs.writeFile(middleware,middlewareBytes);
+    }
     const source=await inspect(profile.root,profile);const before=await plan(source);
+    assert.ok(!before.files.some(f=>f.relative.includes('/_cache/desktop-startup/')),'derived startup caches stay out of user backups');
     const backup=await snapshot(source,path.join(home,'backups'),s=>logs.push(s),{skipExternalCheck:true});
     const copied=await managed.create(backup.root);
     assert.deepEqual((await plan(source)).files,before.files,'Backup and managed copy leave synthetic source unchanged');
-    active=await lifecycle.start(await inspect(copied.root,copied),{skipExternalCheck:true});jar=new Map();token=(await json('/csrf-token')).token;
+    active=await lifecycle.start(await inspect(copied.root,copied),{skipExternalCheck:true,useStartupCache:true});jar=new Map();token=(await json('/csrf-token')).token;
     assert.equal(JSON.parse((await json('/api/settings/get',{})).settings).desktop_test_marker,'persisted');
     assert.equal((await json('/api/chats/get',{avatar_url:avatar,file_name:'desktop-test'}))[1].mes,'模拟回复成功');
     assert.notEqual(copied.dataRoot,source.dataRoot);assert.equal(copied.migration.verified,true);
     assert.ok(!logs.join().includes('synthetic prompt'));assert.ok(!logs.join().includes('模拟回复成功'));
-    await fs.writeFile(path.resolve(__dirname,'../../test-results/real-backend.json'),JSON.stringify({date:new Date().toISOString(),home,profile,copied,passed:true,checks:['CSRF-403','original-UI','JSON-card-import','world-import','preset-save','mock-API-reply','chat-save','restart-persistence','verified-migration-to-new-profile','source-unchanged-after-migration','copied-chat-and-settings-readable','private-status-logs']},null,2));
+    await fs.writeFile(path.resolve(__dirname,'../../test-results/real-backend.json'),JSON.stringify({date:new Date().toISOString(),home,profile,copied,passed:true,checks:['CSRF-403','original-UI','JSON-card-import','world-import','preset-save','mock-API-reply','chat-save','restart-persistence','verified-frontend-hit-without-compiler','output-corruption-native-fallback','source-change-native-fallback','receipt-corruption-native-fallback','unknown-upstream-native-fallback','startup-caches-excluded-from-backups','verified-migration-to-new-profile','source-unchanged-after-migration','copied-chat-and-settings-readable','private-status-logs']},null,2));
   }finally{await lifecycle.stop();await new Promise(r=>mock.close(r));}
 });
