@@ -1,6 +1,51 @@
 'use strict';
 const test = require('node:test'), assert = require('node:assert/strict');
 const modules = Promise.all([import('../desktop/extensions/desktop-writing/agent-loop.mjs'), import('../desktop/extensions/desktop-writing/agent-transport.mjs'), import('../desktop/extensions/desktop-writing/generation.mjs')]);
+const toolCall=(id,name,args)=>({id,type:'function',function:{name,arguments:JSON.stringify(args)}});
+test('independent reads share snapshots, stay within three and await proposal barriers',async()=>{
+ const [{runAgent},,{WritingTask}]=await modules;const task=new WritingTask(),events=[];let active=0,peak=0,turn=0;
+ const calls=[...['a','b','c','a'].map((path,i)=>toolCall('r'+i,'read_file',{path,offset:0,limit:100})),toolCall('l1','list_files',{path:''}),toolCall('l2','list_files',{path:''}),toolCall('p','propose_edit',{path:'a',revision:'v',before:'x',after:'y'}),toolCall('last','read_file',{path:'d',offset:0,limit:100})];
+ await runAgent({history:[{role:'user',text:'核对这些明确指定的文件'}],root:{id:'r',name:'series'},writable:true,task,count:s=>s.length/4,budget:16000,
+ bridge:async(action,args)=>{events.push(action+':'+(args.path||''));if(action==='propose'){assert.equal(active,0);return{id:'pending',path:'a'};}active++;peak=Math.max(peak,active);await new Promise(r=>setTimeout(r,5));active--;return action==='list'?{entries:[]}:{path:args.path,revision:'v',text:args.path.repeat(200)};},
+ complete:async messages=>{if(!turn++)return{role:'assistant',tool_calls:calls};const results=messages.filter(m=>m.role==='tool');assert.deepEqual(results.map(r=>r.tool_call_id),calls.map(c=>c.id));for(const response of results.filter(r=>r.tool_call_id.startsWith('r')))assert.equal(JSON.parse(response.content).path,calls.find(c=>c.id===response.tool_call_id)&&JSON.parse(calls.find(c=>c.id===response.tool_call_id).function.arguments).path);return{content:'完成'};}});
+ assert.equal(peak,3);assert.equal(events.filter(e=>e==='read:a').length,1);assert.equal(events.filter(e=>e==='list:').length,1);assert.ok(events.indexOf('read:d')>events.indexOf('propose:a'));assert.equal(task.performance.fileLoads,4);assert.equal(task.performance.toolCalls,calls.length);assert.ok(task.performance.cacheReuses>=2);
+});
+test('bulk caps and overlapping ranges preserve offsets, exact reads and operation budget',async()=>{
+ const {agentFiles}=await import('../desktop/extensions/desktop-writing/agent-files.mjs');const {startPerformance}=await import('../desktop/extensions/desktop-writing/usage.mjs');const [{agentTools},,{WritingTask}]=await modules;const task=new WritingTask();let loads=0;
+ const io=agentFiles({root:{id:'r'},task,stats:startPerformance(task),tools:agentTools(),record:()=>{},bridge:async(_action,args)=>{loads++;return{path:args.path,revision:'v',text:'0123456789'.repeat(1000)};}});
+ assert.ok(io.reserve('read_multiple_files',{files:[{path:'a'},{path:'b'},{path:'c'},{path:'d'}]}));
+ const batch=await io.execute('read_multiple_files',{files:[{path:'a'},{path:'b'},{path:'c'},{path:'d'}],totalLimit:1000});assert.equal(batch.totalCharactersReturned,1000);assert.ok(batch.files.every(f=>f.end===250&&f.hasMore&&f.revision==='v'));
+ const overlap=await io.execute('read_file',{path:'a',offset:200,limit:200});assert.equal(overlap.offset,250);assert.equal(overlap.end,400);
+ const exact=await io.execute('read_file',{path:'a',offset:200,limit:200,exact:true});assert.equal(exact.offset,200);assert.equal(exact.text.length,200);assert.equal(loads,4);
+ for(let n=0;n<7;n++)assert.ok(io.reserve('read_multiple_files',{files:[{},{},{},{}]}));assert.equal(io.operations,32);assert.equal(io.reserve('read_file',{}),false);
+});
+test('cancelled concurrent group never proceeds into a proposal',async()=>{
+ const [{runAgent},,{WritingTask}]=await modules;const task=new WritingTask();let proposals=0;
+ await assert.rejects(runAgent({history:[{role:'user',text:'读取后修改'}],root:{id:'r',name:'s'},writable:true,task,count:s=>s.length/4,budget:12000,bridge:async action=>{if(action==='propose')proposals++;await new Promise(r=>setTimeout(r,1));task.cancel();task.signal.throwIfAborted();},complete:async()=>({role:'assistant',tool_calls:[toolCall('a','read_file',{path:'a'}),toolCall('b','read_file',{path:'b'}),toolCall('p','propose_edit',{path:'a'})]})}),e=>e.name==='AbortError');assert.equal(proposals,0);
+});
+test('source compaction preserves matching middle facts, bulk metadata and every system message',async()=>{
+ const [{fitAgentMessages}]=await modules;const text='甲'.repeat(2800)+'秘密动机：保护线人。'+'乙'.repeat(2800),messages=[{role:'system',content:'fixed'},{role:'system',content:'editable preferences'},{role:'user',content:'old'.repeat(6000)},{role:'assistant',content:'old answer'},{role:'user',content:'秘密动机是什么'},{role:'assistant',tool_calls:[{id:'x'}]},{role:'tool',tool_call_id:'x',content:JSON.stringify({files:[{path:'a',revision:'v',offset:100,end:100+text.length,readRanges:[[100,100+text.length]],text}]})}];
+ const fitted=await fitAgentMessages(messages,[],s=>s.length,2200),data=JSON.parse(fitted.at(-1).content);assert.equal(fitted[1].content,'editable preferences');assert.ok(!fitted.some(m=>m.content==='old answer'));assert.equal(data.files[0].revision,'v');assert.ok(data.files[0].excerpts.some(e=>e.text.includes('保护线人')));for(const e of data.files[0].excerpts)assert.equal(e.text,text.slice(e.offset-100,e.end-100));assert.equal(fitted.at(-2).tool_calls[0].id,fitted.at(-1).tool_call_id);
+});
+test('small capacity checks avoid tokenizer HTTP, repeated full counts reuse bounded cache',async()=>{
+ const [,,{WritingTask,createTokenCounter}]=await modules;let requests=0;const task=new WritingTask(),count=createTokenCounter({getRequestHeaders:()=>({})},task,{request:async()=>{requests++;return new Response(JSON.stringify({token_count:42}));}});
+ assert.equal(await count.fits('短问题',100),true);assert.equal(requests,0);assert.equal(await count('long'.repeat(100)),42);assert.equal(await count('long'.repeat(100)),42);assert.equal(requests,1);
+});
+test('unchanged rules and editable preferences precede dynamic discussion context',async()=>{
+ const [{runAgent,agentTools},,{WritingTask}]=await modules;const sent=[];
+ for(const discussionInstructions of ['讨论甲','讨论乙'])await runAgent({history:[{role:'user',text:'简单讨论'}],root:null,task:new WritingTask(),instructions:'自定义身份与文风',discussionInstructions,count:s=>s.length/4,budget:6000,complete:async(messages,tools)=>{assert.equal(tools.length,0);sent.push(messages[0].content);return{content:'直接回答'};}});
+ const prefix=sent[0].slice(0,sent[0].indexOf('\n未连接文件夹'));assert.ok(prefix.includes('自定义身份与文风'));assert.ok(sent[1].startsWith(prefix));assert.ok(sent[0].endsWith('讨论甲'));assert.ok(sent[1].endsWith('讨论乙'));assert.equal(JSON.stringify(agentTools(true)),JSON.stringify(agentTools(true)));
+});
+test('compressed repeated reads finish without hidden summary requests or exhausting 32 operations',async()=>{
+ const [{runAgent},,{WritingTask}]=await modules;const task=new WritingTask();let requests=0,loads=0;
+ await runAgent({history:[{role:'user',text:'检查关键事实'}],root:{id:'r',name:'s'},task,count:s=>s.length,budget:7000,bridge:async()=>{loads++;return{path:'a',revision:'v',text:'资料'.repeat(6000)};},complete:async(_messages,tools)=>{requests++;return tools.length?{role:'assistant',tool_calls:[toolCall('x'+requests,'read_file',{path:'a',offset:0,limit:8000})]}:{content:'依据保留片段回答，其他范围尚未覆盖。'};}});
+ assert.equal(requests,4);assert.equal(loads,1);assert.equal(task.performance.toolOperations,3);assert.ok(task.performance.compactions>0);
+});
+test('continuation invalidates changed sources inside bulk results before the next request',async()=>{
+ const [{runAgent},,{WritingTask}]=await modules;const original={files:[{path:'a',revision:'old',offset:0,end:3,text:'旧正文'},{path:'b',revision:'v',offset:0,end:3,text:'新正文'}]};
+ const resume={version:1,rootId:'r',questionKey:'q',messages:[{role:'user',content:'核验'}, {role:'assistant',tool_calls:[toolCall('x','read_multiple_files',{files:[{path:'a'},{path:'b'}]})]},{role:'tool',tool_call_id:'x',content:JSON.stringify(original)}],citations:[{path:'a',revision:'old',ranges:[[0,3]],totalCharacters:3},{path:'b',revision:'v',ranges:[[0,3]],totalCharacters:3}]};
+ await runAgent({history:[{role:'user',text:'核验',at:'q'}],root:{id:'r',name:'s'},task:new WritingTask(),resume,count:s=>s.length/4,budget:9000,bridge:async(_action,args)=>({path:args.path,revision:'v',text:'新正文'}),complete:async messages=>{const data=JSON.parse(messages.find(m=>m.role==='tool').content);assert.equal(data.files[0].text,undefined);assert.match(data.files[0].error,/文件已变化/);assert.equal(data.files[1].text,'新正文');return{content:'旧来源已失效'};}});
+});
 test('capacity trimming drops the oldest turn while preserving a recent complete turn',async()=>{const[{fitAgentMessages}]=await modules;const messages=[{role:'system',content:'core'},{role:'user',content:'old'.repeat(500)},{role:'assistant',content:'old reply'},{role:'user',content:'recent question'},{role:'assistant',content:'recent answer'},{role:'user',content:'current'}];const result=await fitAgentMessages(messages,[],s=>s.length,230);assert.ok(result.some(m=>m.content==='recent answer'));assert.ok(!result.some(m=>m.content==='old reply'));assert.equal(result.at(-1).content,'current');});
 test('long discussion keeps more than four completed pairs while budget allows',async()=>{const [{runAgent},,{WritingTask}]=await modules;const history=[];for(let i=0;i<7;i++)history.push({role:'user',text:'问题'+i},{role:'assistant',text:'回答'+i});history.push({role:'user',text:'当前问题'});const task=new WritingTask();await runAgent({history,root:null,task,count:s=>s.length/4,budget:10000,complete:async messages=>{assert.equal(messages.filter(m=>m.role==='user').length,8);return{content:'完成'};}});assert.deepEqual(task.historyInfo,{kept:7,total:7});});
 test('usage after the final streamed content is retained without becoming prose',async()=>{const[,{readAgentResponse},{WritingTask}]=await modules;const text=[{choices:[{delta:{content:'正文'},finish_reason:'stop'}]},{choices:[],usage:{prompt_tokens:1000,completion_tokens:20,prompt_cache_hit_tokens:800,prompt_cache_miss_tokens:200}}].map(x=>'data: '+JSON.stringify(x)+'\n\n').join('')+'data: [DONE]\n\n';const task=new WritingTask();const result=await readAgentResponse(new Response(text,{headers:{'content-type':'text/event-stream'}}),task,()=>{},true);assert.equal(result.content,'正文');assert.equal(task.usage.hit,800);});
@@ -56,17 +101,17 @@ test('pagination gives exact continuation offset and no text is lost or read fro
 
 test('context packing preserves valid JSON, revision and ranges while explicitly marking omitted text', async()=>{
  const [{fitAgentMessages}]=await modules;const fitted=await fitAgentMessages([{role:'system',content:'s'},{role:'user',content:'u'},{role:'assistant',tool_calls:[{id:'c'}]},{role:'tool',tool_call_id:'c',content:JSON.stringify({path:'设定.md',revision:'sha',offset:0,end:6364,totalCharacters:6364,hasMore:false,text:'中'.repeat(6364)})}],[],s=>s.length,1800);
- const result=JSON.parse(fitted.at(-1).content);assert.equal(result.revision,'sha');assert.equal(result.contextTruncated,true);assert.deepEqual(result.retainedRanges,[[0,256],[6108,6364]]);assert.equal(fitted.at(-2).tool_calls[0].id,fitted.at(-1).tool_call_id);
+ const result=JSON.parse(fitted.at(-1).content);assert.equal(result.revision,'sha');assert.equal(result.contextTruncated,true);assert.ok(result.retainedRanges.some(([a,b])=>a===0&&b>0));assert.ok(result.retainedRanges.some(([,b])=>b===6364));for(const excerpt of result.excerpts)assert.equal(excerpt.text,'中'.repeat(excerpt.end-excerpt.offset));assert.equal(result.text,undefined);assert.equal(fitted.at(-2).tool_calls[0].id,fitted.at(-1).tool_call_id);
 });
 
 test('Agent reserves room for output independently of the roleplay limit and clamps unsafe values', async()=>{
  const {agentLimits}=await import('../desktop/extensions/desktop-writing/agent-settings.mjs');assert.deepEqual(agentLimits(),{context:32768,output:4096,input:25344});assert.equal(agentLimits({context:8192,output:16384}).output,4096);assert.equal(agentLimits({context:0,output:NaN}).output,4096);assert.ok(agentLimits().input+agentLimits().output<agentLimits().context);
 });
 
-test('malformed tool arguments consume the bounded budget and still leave room for a final reply',async()=>{
+test('repeated malformed tools stop early and still leave room for a final reply',async()=>{
  const [{runAgent}, ,{WritingTask}]=await modules;let turns=0,operations=0;
  const result=await runAgent({history:[{role:'user',text:'核对设定'}],root:{id:'r',name:'series'},task:new WritingTask(),count:s=>s.length/4,budget:16000,bridge:async()=>{operations++;},complete:async(_messages,tools)=>{turns++;return tools.length?{role:'assistant',tool_calls:Array.from({length:8},(_,n)=>({id:turns+'-'+n,function:{name:'read_file',arguments:'incomplete JSON'}}))}:{role:'assistant',content:'工具参数错误，无法核对资料。'};}});
- assert.equal(operations,0);assert.equal(turns,5);assert.equal(result.records.length,32);assert.match(result.text,/无法核对/);
+ assert.equal(operations,0);assert.equal(turns,2);assert.equal(result.records.length,8);assert.match(result.text,/无法核对/);
 });
 
 test('failed or cancelled old requests do not become pending instructions in the next turn',async()=>{

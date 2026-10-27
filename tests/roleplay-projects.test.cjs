@@ -45,10 +45,11 @@ test('native character rename migrates project aliases and archive owners withou
     assert.equal(s.project('c:renamed.png').titles.old,'Conversation alias');assert.equal(s.state.archive[0].key,'c:renamed.png');assert.equal(s.state.archive[0].owner,'renamed.png');assert.equal(s.state.archive[0].at,at);assert.equal(f.files.size,2);assert.deepEqual(f.deleted,[]);
 });
 
-test('expiry uses archive time and rejects invalid identifiers',async()=>{
-    const {archiveDue,ARCHIVE_RETENTION}=await modulePromise,f=await fixture();
+test('archives never expire and invalid identifiers remain protected',async()=>{
+    const {archiveDue}=await modulePromise,f=await fixture(),ARCHIVE_RETENTION=30*86400000;
     await f.service.archive(f.entity,[{file:'old'}]);const record=f.service.state.archive[0];
-    assert.equal(archiveDue(record,record.at+ARCHIVE_RETENTION-1),false);assert.equal(archiveDue(record,record.at+ARCHIVE_RETENTION),true);
+    assert.equal(archiveDue(record,record.at+ARCHIVE_RETENTION-1),false);assert.equal(archiveDue(record,record.at+ARCHIVE_RETENTION),false);
+    assert.equal(archiveDue(record,record.at+3650*86400000),false);
     assert.equal(archiveDue({...record,chats:[{file:'../live'}]},record.at+ARCHIVE_RETENTION),false);
     await assert.rejects(f.service.removeArchive(record.id,{expiredOnly:true}),/尚未到期/);assert.deepEqual(f.deleted,[]);
 });
@@ -58,13 +59,14 @@ test('failed archive persistence rolls back and cannot delete any chat',async()=
     assert.equal(f.service.state.archive.length,0);assert.equal(f.files.size,2);assert.deepEqual(f.deleted,[]);
 });
 
-test('automatic expiry removes an overdue archive while preserving a newer one',async()=>{
-    const f=await fixture(),{ARCHIVE_RETENTION}=await modulePromise,s=f.service;
+test('legacy overdue archives are preserved and can still be restored',async()=>{
+    const f=await fixture(),ARCHIVE_RETENTION=30*86400000,s=f.service;
     await s.archive(f.entity,[{file:'old'}]);const oldId=s.state.archive[0].id;
     await s.commit(()=>s.state.archive[0].at-=ARCHIVE_RETENTION+1000);
     await s.archive(f.entity,[{file:'live'}]);const newId=s.state.archive[1].id;
-    await s.removeArchive(oldId,{expiredOnly:true});
-    assert.deepEqual(f.deleted,['old']);assert.equal(s.state.archive[0].id,newId);assert.equal(f.files.has('live'),true);
+    await assert.rejects(s.removeArchive(oldId,{expiredOnly:true}));
+    assert.deepEqual(f.deleted,[]);assert.equal(s.state.archive.length,2);assert.equal(f.files.has('old'),true);
+    await s.restore(oldId);assert.equal(s.state.archive[0].id,newId);assert.equal(f.files.size,2);
 });
 
 test('permanent removal deletes only the explicitly archived file',async()=>{

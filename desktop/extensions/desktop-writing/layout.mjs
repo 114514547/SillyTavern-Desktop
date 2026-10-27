@@ -15,13 +15,14 @@ export class WritingLayout {
         catch { this.preferences = layoutPreferences(); }
         this.root = document.getElementById('dw-workbench');
         this.mobile = matchMedia('(max-width: 900px)'); this.drawer = false;
+        this.root.addEventListener('focusin', event => { if (event.target.closest('#dw-main')) this.lastPane = 'body'; else if (event.target.closest('#dw-discussion')) this.lastPane = 'discussion'; });
         this.mobile.addEventListener('change', () => { this.drawer = false; this.apply(); });
         for (const handle of this.root.querySelectorAll('.dw-resizer')) this.bindHandle(handle);
         this.apply();
     }
     persist() { writeUIPreference('writingLayout',this.preferences); this.save({ ...this.preferences }); }
     restore(value) { if (value) this.preferences = layoutPreferences(value); this.apply(); }
-    setView(view) { this.preferences.view = layoutPreferences({ view }).view; this.drawer = false; this.persist(); this.apply(); }
+    setView(view) { if (view === 'body' || view === 'discussion') this.lastPane = view; this.preferences.view = layoutPreferences({ view }).view; this.drawer = false; this.persist(); this.apply(); }
     toggleNavigation() {
         if (this.mobile.matches) this.drawer = !this.drawer;
         else if (this.preferences.view !== 'workbench') { this.preferences.view = 'workbench'; this.preferences.navigation = true; }
@@ -36,7 +37,7 @@ export class WritingLayout {
     }
     apply() {
         const p = this.preferences, narrow = this.mobile.matches;
-        const view = narrow && p.view === 'workbench' ? 'discussion' : p.view;
+        const view = narrow && p.view === 'workbench' ? (this.lastPane || 'body') : p.view;
         this.root.dataset.view = view;
         this.root.style.setProperty('--dw-navigation-width', p.left + 'px');
         this.root.style.setProperty('--dw-discussion-width', `clamp(300px,${p.right*.8}vw,560px)`);

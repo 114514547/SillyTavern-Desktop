@@ -11,6 +11,8 @@ import { WritingLayout } from './layout.mjs';
 import { WritingTask, createTokenCounter, generateWriting, publicError, WritingRequestError } from './generation.mjs';
 import { LocalAgentUI } from './agent-ui.mjs';
 import { RoleplayUI } from './roleplay-ui.mjs';
+import {RoleplayChat} from './roleplay-chat.mjs';
+import {RoleplayPresets} from './roleplay-settings-data.mjs';
 import {profileBank,selectedProfile,collectedReasoning,savedReasoning} from './assistant-options.mjs';
 import {resolveAssistant} from './assistant-runtime.mjs';
 import {renderAssistantSettings,reasoningPanel,generationPanel} from './assistant-ui.mjs';
@@ -42,7 +44,7 @@ const notify = message => globalThis.toastr?.error(message, '小说写作');
 const project = () => store?.data.projects.find(p => p.id === store.data.currentProjectId);
 const chapter = () => project()?.chapters.find(c => c.id === project().currentChapterId);
 function assistantBank(lane){return profileBank(project(),lane,lane==='draft'?'正文写作':'小说讨论');}
-function renderWritingSettings(){if(!project())return;for(const lane of ['discussion','draft']){const box=$id('dw-profile-'+lane);if(!box)continue;box.replaceChildren();renderAssistantSettings(box,{bank:assistantBank(lane),draft:lane==='draft',busy:generating,change:dirty,preview:p=>resolveAssistant(ctx(),p)});}}
+function renderWritingSettings(){if(!project())return;for(const lane of ['discussion','draft']){const box=$id('dw-profile-'+lane);if(!box)continue;box.replaceChildren();renderAssistantSettings(box,{bank:assistantBank(lane),draft:lane==='draft',busy:generating,change:dirty,edit:()=>settingsDialog.openCreative(lane)});}}
 function renderWorkspaceReference(){
     const box=$id('dw-workspace-reference'),p=project();if(!box||!p)return;box.replaceChildren();const picker=node('select',undefined,'text_pole');picker.setAttribute('aria-label','关联的本地设定工作区');picker.append(option('','不关联本地文件夹'));for(const root of localAgent?.data.roots||[])picker.append(option(root.id,root.name));picker.value=p.workspaceRootId||'';picker.onchange=()=>{p.workspaceRootId=picker.value||null;p.workspaceFiles=[];p.useWorkspace=!!picker.value;dirty();renderWorkspaceReference();};box.append(field('关联的本地设定工作区',picker));
     for(const [key,label]of [['useWorkspace','参考关联的本地资料'],['useWorkspaceNotes','参考作者确认的项目摘要']]){const input=node('input');input.type='checkbox';input.checked=!!p[key];input.onchange=()=>{p[key]=input.checked;dirty();};box.append(field(label,input));}
@@ -50,9 +52,7 @@ function renderWorkspaceReference(){
     const manage=button('在本地工作区选择与引用文件','manage-workspace');manage.onclick=()=>void guarded(async()=>{await changeMode('agent');localAgent.drawer='files';localAgent.renderDrawer();});box.append(manage,node('small','从本地工作区的文档预览点击“引用到当前作品”。最多 4 份，每份最多引用 12000 字符；不会自动发送整个文件夹。'));
 }
 async function assistantDialog(){
-    if(!await ensureProject())return;const owner=project(),box=node('div',undefined,'dw-popup'),lane=node('select',undefined,'text_pole'),content=node('div');lane.append(option('discussion','小说讨论'),option('draft','正文写作'));box.append(field('配置用途',lane),content);
-    const draw=()=>{content.replaceChildren();renderAssistantSettings(content,{bank:profileBank(owner,lane.value,lane.value==='draft'?'正文写作':'小说讨论'),draft:lane.value==='draft',busy:generating,change:dirty,preview:p=>resolveAssistant(ctx(),p)});};lane.onchange=draw;draw();
-    await new Popup(box,POPUP_TYPE.TEXT,'',{wide:true,okButton:'关闭设置',allowVerticalScrolling:true}).show();renderWritingSettings();discussion.renderContext();await save();
+    if(!await ensureProject())return;await settingsDialog.openCreative('discussion');
 }
 const escapeHtml = str => String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 function node(tag, text, className) { const result = document.createElement(tag); if (text !== undefined) result.textContent = text; if (className) result.className = className; return result; }
@@ -100,6 +100,7 @@ function render() {
     }
     if (ch) { $id('dw-title').value = ch.title; $id('dw-volume').value = ch.volume; $id('dw-body').value = ch.text; $id('dw-outline').value = ch.outline; }
     $id('dw-count').textContent = ch ? formatCount(ch.text.length) : '';
+    for (const action of ['rewrite','discuss-selection','novel-to-chat']) { const b=$id('dw-actions').querySelector('[data-dw-action="'+action+'"]'); if(b)b.hidden=true; }
     document.querySelector('[data-dw-action="recover-candidate"]').hidden = !ch?.pendingCandidate;
     const contextTitle = $id('dw-context-title');
     if (contextTitle) {
@@ -129,7 +130,7 @@ async function changeMode(next) {
         roleplay?.setActive(mode === 'rp');
         $id('dw-writer').hidden = mode !== 'writing';
         if (localAgent) { localAgent.host.hidden = mode !== 'agent'; if (mode === 'agent') localAgent.render(); }
-        document.querySelectorAll('#dw-modebar [data-mode]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
+        modernShell.setMode(mode);
         const contextTitle = $id('dw-context-title');
         if (contextTitle) {
             const p = project(), ch = chapter();
@@ -233,7 +234,8 @@ async function generateDraft(task, sourceText = null, source = null) {
     const selected = sourceText ?? ch.text.slice(target.start, target.end);
     if (task === '润色选段' && !selected) throw new Error('请先在正文中选中需要润色的部分。');
     const request = new WritingTask(phase => { if (draftTask === request) $id('dw-generation').textContent = phase; });
-    draftTask = request; generating = true; $id('dw-generation').hidden = false; discussion.render();
+    request.destination = { projectId:p.id, chapterId:ch.id };
+    draftTask = request; generating = true; modernShell?.refreshTasks(); $id('dw-generation').hidden = false; discussion.render();
     $id('dw-draft-preview').open=true;draftPreview('',true,true);
     let result;
     try {
@@ -253,7 +255,7 @@ async function generateDraft(task, sourceText = null, source = null) {
         if (request.text.trim()) { ch.pendingCandidate = { text: request.text, at: new Date().toISOString() }; dirty(); render(); void save().catch(() => {}); }
         if (error.name === 'AbortError') { globalThis.toastr?.info(request.text ? '已停止，可点击“未完成草稿”查看已收到的内容。' : '已停止本次生成，原正文保留。'); return; }
         throw new WritingRequestError(publicError(error));
-    } finally { request.cancel(); if (draftTask === request) { draftPreview('',false,true);draftTask = null; generating = false; $id('dw-generation').hidden = true; discussion.render(); } }
+    } finally { request.cancel(); if (draftTask === request) { draftPreview('',false,true);draftTask = null; generating = false; modernShell?.refreshTasks(); $id('dw-generation').hidden = true; discussion.render(); } }
     // Capture the original project/chapter. A mode or chapter switch never redirects the result.
     const box = node('div', undefined, 'dw-popup'); box.append(node('h3', '候选稿 · ' + p.title + ' / ' + ch.title));
     if(request.assistant)box.append(generationPanel({...request.assistant.info,usage:request.usage}));if(request.assistant?.profile.showReasoning&&request.reasoning)box.append(reasoningPanel(collectedReasoning(request)));
@@ -333,6 +335,44 @@ async function novelToChat() {
     next.chat.splice(0); const message = { name: '小说场景', is_user: false, is_system: true, mes: excerpt, send_date: new Date().toISOString(), extra: { desktopWritingScene: true } }; next.chat.push(message); await next.printMessages(); updateScenePrompt(); await next.saveChat(); await changeMode('rp');
     globalThis.toastr?.success('已创建新的扮演分支，原聊天和小说正文保留。');
 }
+async function revealWritingTask() {
+    const destination = draftTask?.destination, job = discussion?.job;
+    const p = store.data.projects.find(p => p.id === (destination?.projectId || job?.project.id));
+    if (p) { store.data.currentProjectId = p.id; if (destination) p.currentChapterId = destination.chapterId; if (job) p.currentConversationId = job.conversation.id; dirty(); render(); }
+    await changeMode('writing'); setWritingView(job ? 'discussion' : 'body');
+}
+async function adoptAgentReply(text) {
+    if (!ready || !store.data.projects.length) throw new Error('请先创建小说作品和章节。');
+    const sourceRoot = localAgent.root?.id, box = node('div', undefined, 'dw-popup');
+    const works = node('select', undefined, 'text_pole'), chapters = node('select', undefined, 'text_pole');
+    for (const p of store.data.projects) works.append(option(p.id, p.title));
+    works.value = project()?.id || works.options[0].value;
+    const placement = node('select', undefined, 'text_pole');
+    placement.append(option('append', '追加到章末'), option('candidate', '保存为候选稿'), option('replace', '替换整章正文（保留历史）'));
+    const content = node('textarea', undefined, 'text_pole dw-candidate'); content.value = text;
+    const preview = node('pre', undefined, 'dw-inline-diff'), destination = node('p');
+    let target, original;
+    const updatePreview = () => { destination.textContent = '目标：' + works.selectedOptions[0]?.textContent + ' / ' + (target?.title || '尚无章节'); preview.textContent = placement.value === 'append' ? (original || '') + (original ? '\n\n' : '') + content.value : content.value; };
+    const selectChapter = () => { target = store.data.projects.find(p => p.id === works.value)?.chapters.find(ch => ch.id === chapters.value); original = target?.text; updatePreview(); };
+    const selectWork = () => { const p = store.data.projects.find(p => p.id === works.value); chapters.replaceChildren(...(p?.chapters || []).map(ch => option(ch.id, ch.title))); chapters.value = p?.currentChapterId || chapters.options[0]?.value || ''; selectChapter(); };
+    works.onchange = selectWork; chapters.onchange = selectChapter; placement.onchange = updatePreview; content.oninput = updatePreview; selectWork();
+    box.append(node('h3', '发送到小说'), field('目标作品', works), field('目标章节', chapters), field('采用方式', placement), field('内容（可编辑）', content), destination, node('small', '结果预览；修改正文前自动保留历史。候选稿不会修改正文。'), preview);
+    if (await new Popup(box, POPUP_TYPE.CONFIRM, '', { wide:true, okButton:'确认发送', cancelButton:'取消', allowVerticalScrolling:true }).show() !== POPUP_RESULT.AFFIRMATIVE) return;
+    if (!target || !store.data.projects.find(p => p.id === works.value)?.chapters.includes(target)) throw new Error('目标章节已变化，请重新选择。');
+    if (!content.value.trim()) throw new Error('发送内容不能为空。');
+    if (target.text !== original) throw new Error('目标正文已变化，请重新预览后发送。');
+    if (placement.value === 'candidate') {
+        if (target.pendingCandidate) throw new Error('此章节已有候选稿，请先处理，避免覆盖。');
+        target.pendingCandidate = { text:content.value, at:new Date().toISOString() };
+    } else {
+        applyCandidate(target, content.value, { start:0, end:original.length, original }, placement.value === 'replace' && !!original, { type:'agent-discussion', rootId:sourceRoot, at:new Date().toISOString() });
+    }
+    dirty(); render(); await save();
+    localAgent.message('已保存到：' + works.selectedOptions[0].textContent + ' / ' + target.title + (placement.value === 'candidate' ? '（候选稿）' : '；原文已保留历史。'));
+    const notice = node('div'); notice.append(node('p', destination.textContent + ' · 已保存'));
+    const view = button('查看目标章节', ''); view.onclick = () => void guarded(async () => { store.data.currentProjectId = works.value; project().currentChapterId = target.id; dirty(); render(); await changeMode('writing'); }); notice.append(view);
+    localAgent.$('#agent-status').replaceChildren(notice);
+}
 function decorateMessages() {
     document.querySelectorAll('#chat .mes[mesid]').forEach(message => {
         if (message.querySelector('.dw-message-to-novel') || message.getAttribute('is_system') === 'true') return;
@@ -342,30 +382,22 @@ function decorateMessages() {
     });
 }
 function buildUI() {
-    const bar = node('div', undefined, 'flex-container'); bar.id = 'dw-modebar';
-    const brand = node('div', undefined, 'dw-brand'); brand.id = 'dw-brand';
-    brand.innerHTML = '<span class="dw-brand-dot"></span><span class="dw-brand-title">ST DESKTOP</span>';
-    const rp = button('角色扮演', 'mode', 'fa-comments'); rp.dataset.mode = 'rp'; rp.setAttribute('aria-pressed', 'true');
-    const writing = button('小说写作', 'mode', 'fa-file-pen'); writing.dataset.mode = 'writing'; writing.setAttribute('aria-pressed', 'false');
-    const agent = button('本地工作区', 'mode', 'fa-folder-open'); agent.dataset.mode = 'agent'; agent.setAttribute('aria-pressed', 'false');
-    const modeNav = node('nav', undefined, 'dw-mode-nav'); modeNav.id = 'dw-mode-nav';
-    modeNav.append(writing, rp, agent);
-    const contextTitle = node('div', undefined, 'dw-context-title'); contextTitle.id = 'dw-context-title'; contextTitle.hidden = true;
-    const saveStatus = node('span', '正在读取作品…'); saveStatus.id = 'dw-save'; saveStatus.setAttribute('role', 'status');
-    const chatToNovelBtn = button('聊天转正文', 'chat-to-novel', 'fa-arrow-right-arrow-left');
-    bar.append(brand, modeNav, contextTitle, chatToNovelBtn, saveStatus);
-    const tools = node('div'); tools.id = 'dw-global-tools';
-    const zenBtn = button('专注', 'zen-mode', 'fa-expand'); zenBtn.id = 'dw-zen-btn'; zenBtn.title = '快捷键 F10：专注模式';
-    tools.append(zenBtn);
     document.body.classList.add('dw-desktop');
     const theme=new DesktopTheme();
-    settingsDialog = new SettingsDialog({ctx,theme,busy:()=>generating||isGenerating(),getUsage:()=>{const last=mode==='agent'?localAgent?.thread?.messages.filter(m=>m.role==='assistant').at(-1):mode==='writing'?discussion?.current()?.messages?.filter(m=>m.role==='assistant').at(-1):null;return last?.usage||last?.generationInfo?.usage;},
+    modernShell=new ModernShell({ctx,theme,task:()=>localAgent?.job?{label:'本地 Agent 执行中',run:()=>changeMode('agent')}:generating?{label:'小说生成中',run:()=>guarded(revealWritingTask)}:isGenerating()?{label:'角色扮演生成中',run:()=>changeMode('rp')}:null,model:()=>ctx().mainApi==='openai'?getChatCompletionModel():'当前原生连接',settings:tab=>settingsDialog.open(tab),commands:()=>[
+        ...[['writing','小说写作'],['rp','角色扮演'],['agent','本地工作区']].map(([key,label])=>({label:'切换到 '+label,run:()=>changeMode(key)})),
+        ...[['models','连接与模型'],['params','生成参数'],['world','世界书'],['appearance','外观与主题'],['background','聊天背景'],['extensions','扩展与正则'],['persona','用户身份'],['character','角色卡管理'],['format','提示格式']].map(([key,label])=>({label:'设置 · '+label,run:()=>settingsDialog.open(key)})),
+        {label:'本地工作区 · 展开/收起文档栏',run:async()=>{await changeMode('agent');localAgent.layout.toggleFiles();}},
+        {label:'本地工作区 · 展开/收起项目栏',run:async()=>{await changeMode('agent');localAgent.layout.toggleProjects();}},
+        {label:'小说 · 新作品',run:async()=>{await changeMode('writing');$id('dw-projectbar').querySelector('[data-dw-action="new-project"]').click();}},
+        ...(project()?.chapters||[]).map(ch=>({label:'章节 · '+ch.title,run:async()=>{await changeMode('writing');project().currentChapterId=ch.id;dirty();render();}})),
+        ...(localAgent.data.threads||[]).map(t=>({label:'讨论 · '+t.title,run:async()=>{await changeMode('agent');if(localAgent.data.currentRoot!==t.rootId)await localAgent.selectRoot(t.rootId);localAgent.shadow.querySelector('[data-thread="'+t.id+'"]')?.click();}})),
+    ]});
+    const bar=modernShell.bar;
+    settingsDialog = new SettingsDialog({ctx,theme,busy:()=>generating||isGenerating()||roleplay?.chat?.locked||roleplay?.chat?.editing,getUsage:()=>{const last=mode==='agent'?localAgent?.thread?.messages.filter(m=>m.role==='assistant').at(-1):mode==='writing'?discussion?.current()?.messages?.filter(m=>m.role==='assistant').at(-1):null;return last?.usage||last?.generationInfo?.usage;},
         prepareNative:()=>roleplay?.suspendForSettings(),
-        openAgentSettings:async()=>{await changeMode('agent');localAgent.drawer='settings';localAgent.renderDrawer();}});
-    const unifiedSettings = button('酒馆设置', 'unified-settings', 'fa-gear'); unifiedSettings.id = 'dw-settings-modal-btn'; unifiedSettings.title = '酒馆设置 · Ctrl+,';
-    tools.append(unifiedSettings);
-    if(globalThis.localWorkspace?.appMenu){const appMenu=button('应用菜单','app-menu','fa-bars');appMenu.title='酒馆、编辑、视图、帮助（也可按 Alt 键）';tools.append(appMenu);}
-    bar.append(tools);
+        getAgent:()=>localAgent,
+        getWritingSettings:()=>({owner:project,ensure:ensureProject,change:()=>{dirty();discussion?.renderContext();},save:async()=>{await save();renderWritingSettings();renderReferences();discussion?.renderContext();}})});
     const writer = node('section'); writer.id = 'dw-writer'; writer.hidden = true;
     writer.innerHTML = `<div id="dw-projectbar" class="flex-container"><select id="dw-project" class="text_pole" aria-label="当前作品"></select></div>
         <div id="dw-workbench">
@@ -378,35 +410,28 @@ function buildUI() {
           <section id="dw-main" aria-label="章节文稿"><div id="dw-selection-floating-bar" hidden><button type="button" class="menu_button interactable" data-dw-float-action="discuss-selection"><i class="fa-solid fa-quote-left" aria-hidden="true"></i><span>引用讨论</span></button><button type="button" class="menu_button interactable" data-dw-float-action="rewrite"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i><span>润色选段</span></button><button type="button" class="menu_button interactable" data-dw-float-action="novel-to-chat"><i class="fa-solid fa-comments" aria-hidden="true"></i><span>试演分支</span></button><button type="button" class="menu_button interactable dw-float-crossroads" data-dw-float-action="crossroads"><i class="fa-solid fa-compass" aria-hidden="true"></i><span>剧情推演</span></button></div><div id="dw-empty">从“新作品”开始创作，也可以先在右侧讨论大纲和人物。</div><div id="dw-document"><div id="dw-heading"><input id="dw-volume" class="text_pole" placeholder="所属卷（可选）" aria-label="所属卷" maxlength="300"><input id="dw-title" class="text_pole" placeholder="章节标题" aria-label="章节标题" maxlength="300"></div><textarea id="dw-body" class="text_pole" aria-label="小说正文" placeholder="在这里写作。选中一段后，可交给右侧 AI 讨论或修改。"></textarea><span id="dw-count"></span></div><div id="dw-generation" role="status" hidden></div><div id="dw-actions" class="flex-container"></div></section>
           <div class="dw-resizer" data-pane="right" role="separator" aria-label="调整对话宽度" aria-orientation="vertical" aria-valuemin="28" aria-valuemax="60" tabindex="0"></div>
         </div>`;
-    const sheld = $id('sheld'); sheld.prepend(writer); sheld.prepend(bar);
+    const roleplayHost=node('section');roleplayHost.id='dw-roleplay';modernShell.pages.append(roleplayHost,writer);
     const preview=node('details');preview.id='dw-draft-preview';preview.hidden=true;
     preview.append(node('summary','候选稿实时预览 · 仅预览，采用后才修改正文'));
     const previewText=node('textarea',undefined,'text_pole');previewText.id='dw-draft-preview-text';previewText.readOnly=true;previewText.setAttribute('aria-label','候选稿实时预览');previewText.rows=6;preview.append(previewText);$id('dw-generation').after(preview);
-    roleplay = new RoleplayUI({ctx,busy:()=>generating||isGenerating(),getWorld:()=>({selected_world_info,world_info}),getModel:c=>c.mainApi==='openai'?getChatCompletionModel():({textgenerationwebui:'文本补全',kobold:'Kobold',koboldhorde:'Kobold Horde',novel:'NovelAI'}[c.mainApi]||c.mainApi),
+    roleplay = new RoleplayUI({ctx,busy:()=>generating||isGenerating()||roleplay?.chat?.locked||roleplay?.chat?.editing,getWorld:()=>({selected_world_info,world_info}),getModel:c=>c.mainApi==='openai'?getChatCompletionModel():({textgenerationwebui:'文本补全',kobold:'Kobold',koboldhorde:'Kobold Horde',novel:'NovelAI'}[c.mainApi]||c.mainApi),
         openSettings:key=>settingsDialog.open(key==='model'?'models':key==='preset'?'params':key),
-        selectPreset:async value=>{const manager=ctx().getPresetManager();if(!manager)throw new Error('当前接口没有原生预设管理器。');await manager.selectPreset(value);},
+        getPresets:()=>{const manager=ctx().getPresetManager();if(!manager)return {records:[],selected:''};const {presets,preset_names,settings}=manager.getPresetList();const records=Array.isArray(preset_names)?preset_names.map((name,index)=>({name,preset:presets[index]})):Object.entries(preset_names).map(([name,index])=>({name,preset:presets[index]}));return {records,selected:ctx().mainApi==='openai'?settings.preset_settings_openai:manager.getSelectedPresetName()};},
+        selectPreset:async name=>{const bank=new RoleplayPresets(ctx,ctx().mainApi),record=(await bank.list()).find(r=>r.name===name);if(!record)throw Error('预设文件已变化，请重新选择。');await bank.apply(record);},
         openGroup:openGroupById,onChatToNovel:()=>chatToNovel(),
-    });roleplay.mount(sheld);roleplay.setActive(true);saveStatus.hidden=true;bar.querySelector('[data-dw-action="chat-to-novel"]').hidden=true;
-    localAgent = new LocalAgentUI({ ctx, busy: () => generating || isGenerating(), setBusy: value => { generating = value; discussion?.render(); }, reference: referenceText });
-    localAgent.mount(sheld);
-    modernShell=new ModernShell({ctx,model:()=>ctx().mainApi==='openai'?getChatCompletionModel():'当前原生连接',settings:tab=>settingsDialog.open(tab),commands:()=>[
-        ...[['writing','小说写作'],['rp','角色扮演'],['agent','本地工作区']].map(([key,label])=>({label:'切换到 '+label,run:()=>changeMode(key)})),
-        ...[['models','连接与模型'],['params','生成参数'],['world','世界书'],['appearance','外观与主题'],['background','聊天背景'],['extensions','扩展与正则'],['persona','用户身份'],['character','角色卡管理'],['format','提示格式']].map(([key,label])=>({label:'设置 · '+label,run:()=>settingsDialog.open(key)})),
-        {label:'本地工作区 · 展开/收起文档栏',run:async()=>{await changeMode('agent');localAgent.layout.toggleFiles();}},
-        {label:'本地工作区 · 展开/收起项目栏',run:async()=>{await changeMode('agent');localAgent.layout.toggleProjects();}},
-        {label:'小说 · 新作品',run:async()=>{await changeMode('writing');$id('dw-projectbar').querySelector('[data-dw-action="new-project"]').click();}},
-        ...(project()?.chapters||[]).map(ch=>({label:'章节 · '+ch.title,run:async()=>{await changeMode('writing');project().currentChapterId=ch.id;dirty();render();}})),
-        ...(localAgent.data.threads||[]).map(t=>({label:'讨论 · '+t.title,run:async()=>{await changeMode('agent');if(localAgent.data.currentRoot!==t.rootId)await localAgent.selectRoot(t.rootId);localAgent.shadow.querySelector('[data-thread="'+t.id+'"]')?.click();}})),
-    ]});
+    });roleplay.mount(roleplayHost);
+    roleplay.chat=new RoleplayChat({ctx,busy:()=>generating||isGenerating(),status:(text,error)=>{roleplay.status.textContent=text;if(error)globalThis.toastr?.warning(text);},onChatToNovel:()=>chatToNovel()});roleplay.chat.mount(roleplayHost);roleplay.setActive(true);
+    localAgent = new LocalAgentUI({ ctx, busy: () => generating || isGenerating(), setBusy: value => { generating = value; modernShell?.refreshTasks(); discussion?.render(); }, reference: referenceText });
+    localAgent.mount(modernShell.pages);
     localAgent.onReference=async(rootId,name)=>{const p=project();if(!p)throw new Error('请先在小说模式创建或选择作品。');if(p.workspaceRootId!==rootId)p.workspaceFiles=[];p.workspaceFiles??=[];if(!p.workspaceFiles.includes(name)){if(p.workspaceFiles.length>=4)throw new Error('当前作品最多引用4份文件，请先移除不需要的引用。');p.workspaceFiles.push(name);}p.workspaceRootId=rootId;p.useWorkspace=true;dirty();await save();renderWorkspaceReference();};
-    localAgent.onAdopt=async text=>{const p=project(),ch=chapter();if(!p||!ch)throw new Error('请先在小说模式选择作品和章节。');applyCandidate(ch,text,null,false,{type:'agent-discussion',rootId:localAgent.root?.id,at:new Date().toISOString()});dirty();render();await save();localAgent.message('已追加到章节：'+ch.title+'；采用前的正文已保留历史。');};
+    localAgent.onAdopt=adoptAgentReply;
     const viewbar = node('div', undefined, 'flex-container'); viewbar.id = 'dw-viewbar';
     const workbenchView = button('🍱 三栏创作', 'view', 'fa-table-columns'); workbenchView.dataset.view = 'workbench';
     const chatView = button('💬 专注对话', 'view', 'fa-comments'); chatView.dataset.view = 'discussion';
     const bodyView = button('📄 专注正文', 'view', 'fa-file-lines'); bodyView.dataset.view = 'body';
     viewbar.append(workbenchView, chatView, bodyView, button('📑 目录', 'navigation', 'fa-list'), button('📖 大纲与参考', 'references', 'fa-book-open'),button('⚙ 预设与思考','assistant-settings','fa-sliders'));
     const writingToolbar=node('div');writingToolbar.id='dw-writing-toolbar';$id('dw-projectbar').before(writingToolbar);writingToolbar.append($id('dw-projectbar'),viewbar);
-    discussion = new Discussion({ project, chapter, ctx, dirty, save, ensureProject, reference: referenceText, assistant:()=>selectedProfile(assistantBank('discussion')), busy: () => generating || isGenerating(), setBusy: value => { generating = value; }, isReady: () => ready, showChapter: (projectId, chapterId) => {
+    discussion = new Discussion({ project, chapter, ctx, dirty, save, ensureProject, reference: referenceText, assistant:()=>selectedProfile(assistantBank('discussion')), busy: () => generating || isGenerating(), setBusy: value => { generating = value; modernShell?.refreshTasks(); }, isReady: () => ready, showChapter: (projectId, chapterId) => {
         store.data.currentProjectId = projectId; project().currentChapterId = chapterId; selectedRange = null; dirty(); render(); setWritingView(writingLayout.mobile.matches ? 'body' : 'workbench'); void guarded(() => changeMode('writing'));
     } });
     discussion.mount($id('dw-workbench'));
@@ -417,7 +442,11 @@ function buildUI() {
     includeChapter.append(includeInput, node('span', '对话参考当前章节正文与大纲')); $id('dw-use-world').closest('label').after(includeChapter);
     $id('dw-projectbar').append(button('✨ 新作品', 'new-project', 'fa-plus'), button('📁 作品', 'project-options', 'fa-book'), button('📥 导入', 'import', 'fa-file-import'), button('📤 导出', 'export', 'fa-download'));
     $id('dw-chaptertools').append(button('＋ 新章', 'add', 'fa-plus'), button('↑ 上移', 'up', 'fa-arrow-up'), button('↓ 下移', 'down', 'fa-arrow-down'));
-    $id('dw-actions').append(button('💬 交给 AI 讨论', 'discuss-selection', 'fa-quote-left'), button('💾 保存', 'save', 'fa-floppy-disk'), button('📸 快照', 'snapshot', 'fa-camera'), button('⏳ 历史', 'history', 'fa-clock-rotate-left'), button('⚡ AI 续写', 'continue', 'fa-feather-pointed'), button('🪄 润色选段', 'rewrite', 'fa-wand-magic-sparkles'), button('🎭 从选段扮演', 'novel-to-chat', 'fa-comments'), button('⏹ 停止生成', 'stop', 'fa-stop'), button('🗑 删除章节', 'delete', 'fa-trash'));
+    $id('dw-actions').append(button('AI 续写', 'continue', 'fa-feather-pointed'), button('润色选段', 'rewrite', 'fa-wand-magic-sparkles'), button('讨论选段', 'discuss-selection', 'fa-quote-left'), button('保存', 'save', 'fa-floppy-disk'), button('历史', 'history', 'fa-clock-rotate-left'), button('停止生成', 'stop', 'fa-stop'));
+    const moreActions = node('details'), moreLabel = node('summary', '更多'), moreItems = node('div');
+    moreActions.append(moreLabel, moreItems); moreItems.append(button('保存快照', 'snapshot', 'fa-camera'), button('从选段扮演', 'novel-to-chat', 'fa-comments'), button('导出', 'export', 'fa-download'), button('删除章节', 'delete', 'fa-trash')); $id('dw-actions').append(moreActions);
+    moreItems.addEventListener('click', event => { if (event.target.closest('button')) moreActions.open = false; });
+    $id('dw-actions').addEventListener('pointerdown', event => { if (event.target.closest('button')) event.preventDefault(); });
     const recoveryButton = button('📄 未完成草稿', 'recover-candidate', 'fa-file-lines'); recoveryButton.hidden = true; $id('dw-actions').append(recoveryButton);
     writingLayout = new WritingLayout({ save: value => { if (ready) { store.data.layout = value; dirty(); } } });
     $id('dw-navigation-tab').onchange = () => writingLayout.apply();
@@ -465,6 +494,7 @@ function buildUI() {
         const editor = $id('dw-body');
         if (!editor || !floatingBar) return;
         const start = editor.selectionStart, end = editor.selectionEnd;
+        for (const action of ['rewrite', 'discuss-selection', 'novel-to-chat']) { const b = $id('dw-actions').querySelector('[data-dw-action="' + action + '"]'); if (b) b.hidden = start === end; }
         if (start === null || end === null || end - start < 2) {
             floatingBar.hidden = true;
             return;
@@ -494,7 +524,7 @@ function buildUI() {
         if (e.key.startsWith('Arrow') || e.key === 'Home' || e.key === 'End') updateFloatingBar();
         else floatingBar.hidden = true;
     });
-    $id('dw-body').addEventListener('select', captureSelection);
+    $id('dw-body').addEventListener('select', () => { captureSelection(); updateFloatingBar(); });
     $id('dw-body').addEventListener('keydown', event => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); void guarded(save); } });
     window.addEventListener('keydown', e => {
         if (e.key === 'F10' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && mode !== 'rp' && !document.querySelector('dialog[open]')) {
@@ -512,7 +542,7 @@ async function initialize() {
     if (initialized) return; initialized = true; buildUI();
     const protection=globalThis.localWorkspace?.writingProtection?async arg=>{const response=await globalThis.localWorkspace.writingProtection(arg);if(!response?.ok)throw new Error(response?.error||'小说保护副本操作失败，请重试保存。');return response.value;}:null;
     store = new WritingStore({ headers: () => ctx().getRequestHeaders(), onStatus: status, protection, lock: task => navigator.locks ? navigator.locks.request('desktop-writing-save-v1', task) : task() });
-    globalThis.SillyTavernDesktopWriting = Object.freeze({ get ready() { return uiReady; }, prepareToLeave: async () => { try { if (store.unsaved) await save(); return await localAgent.prepareToLeave(); } catch { return false; } }, settingsDialog });
+    globalThis.SillyTavernDesktopWriting = Object.freeze({ get ready() { return uiReady; }, prepareToLeave: async () => { try { if(!await roleplay.chat.beforeLeave())return false;if (store.unsaved) await save(); return await localAgent.prepareToLeave(); } catch { return false; } }, settingsDialog });
     window.addEventListener('beforeunload', event => { if (store.unsaved || localAgent.unsaved || localAgent.editorDirty || localAgent.job) { event.preventDefault(); event.returnValue = ''; void save().catch(() => {}); void localAgent.prepareToLeave(); } });
     document.addEventListener('click', event => {
         if (generating && event.target.closest('#send_but, #option_regenerate, #option_continue, .swipe_right')) {
@@ -531,6 +561,7 @@ async function initialize() {
     for (const name of ['CHARACTER_MESSAGE_RENDERED', 'USER_MESSAGE_RENDERED', 'MESSAGE_UPDATED', 'MESSAGE_SWIPED']) if (c.eventTypes[name]) c.eventSource.on(c.eventTypes[name], decorateMessages);
     updateScenePrompt(); decorateMessages();
     modernShell?.refresh();
-    if (ready && agentLoaded) { uiReady = true; void globalThis.localWorkspace?.startupReady?.().catch(() => {}); }
+    uiReady = ready && agentLoaded;
+    await modernShell.reveal();
 }
 ctx().eventSource.on(ctx().eventTypes.APP_READY, () => guarded(initialize));

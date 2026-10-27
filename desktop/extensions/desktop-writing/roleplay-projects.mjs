@@ -1,6 +1,6 @@
 import {readUIPreference,writeUIPreference} from './ui-preferences.mjs';
 
-export const ARCHIVE_RETENTION = 30 * 24 * 60 * 60 * 1000;
+// Archives remain indefinitely, including records created by older versions.
 const KEY='roleplayProjects';
 const safeName=value=>typeof value==='string'&&value.length>0&&!/[\\/\u0000-\u001f]/.test(value)&&value!=='.'&&value!=='..';
 export const projectKey=(owner,group=false)=>(group?'g:':'c:')+owner;
@@ -10,9 +10,7 @@ export function validArchive(record){
         &&Number.isFinite(record.at)&&record.at>0&&Array.isArray(record.chats)
         &&record.chats.every(chat=>safeName(chat.file));
 }
-export function archiveDue(record,now=Date.now()){
-    return validArchive(record)&&now>=record.at&&now-record.at>=ARCHIVE_RETENTION;
-}
+export function archiveDue(){ return false; }
 
 // Only display metadata lives here. Native chat files remain the source of truth.
 export class RoleplayProjects{

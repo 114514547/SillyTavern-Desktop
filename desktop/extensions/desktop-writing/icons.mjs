@@ -1,5 +1,7 @@
 // Application-owned paths. Never render model text as SVG markup.
 const paths={
+ 'fa-panel-left':'M3 4h18v16H3V4M9 4v16','fa-panel-right':'M3 4h18v16H3V4M15 4v16','fa-arrow-left':'M20 12H4m6-6-6 6 6 6',
+ 'fa-copy':'M8 8h13v13H8V8M16 8V3H3v13h5','fa-ellipsis':'M4 12h.01M12 12h.01M20 12h.01',
  'fa-plus':'M12 5v14M5 12h14','fa-xmark':'m6 6 12 12M18 6 6 18',
  'fa-magnifying-glass':'m21 21-5-5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0',
  'fa-gear':'M9 3h6l1 4 4 2v6l-4 2-1 4H9l-1-4-4-2V9l4-2 1-4M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0',
@@ -27,6 +29,7 @@ const paths={
  'fa-clock-rotate-left':'M3 11a9 9 0 1 1 3 8M3 4v7h7M12 7v6l4 2',
  'fa-feather-pointed':'M4 21 17 8M8 17c-4-7 3-15 13-14 1 10-7 17-14 13M11 11h7',
  'fa-wand-magic-sparkles':'m4 20 12-12 4 4L8 24M4 4v4M2 6h4M18 2v4M16 4h4',
+ 'fa-box-archive':'M3 3h18v5H3zM5 8v13h14V8M9 12h6',
  'fa-trash':'M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7',
  'fa-arrow-right-arrow-left':'M3 7h17m-4-4 4 4-4 4M21 17H4m4-4-4 4 4 4',
 };

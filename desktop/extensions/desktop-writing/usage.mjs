@@ -29,3 +29,8 @@ export function recordUsage(task, record, value) {
     // request's snapshot; only distinct requests contribute to the task total.
     record.usage = usage; summarize(task);
 }
+export function startPerformance(task){
+    task.performanceStarted??=performance.now();
+    return task.performance??={version:1,totalMs:0,modelRequests:0,modelMs:0,toolCalls:0,toolOperations:0,toolMs:0,toolTypes:{},fileLoads:0,cacheReuses:0,duplicateReads:0,compactions:0,tokenizerRequests:0,tokenizerCacheHits:0,tokenizerBoundChecks:0,tokenizerEstimated:false,readConcurrency:3};
+}
+export function finishPerformance(task){const stats=startPerformance(task);stats.totalMs=Math.round(performance.now()-task.performanceStarted);return structuredClone(stats);}

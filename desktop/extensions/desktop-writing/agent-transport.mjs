@@ -1,7 +1,7 @@
 import { WritingRequestError } from './generation.mjs';
-import { agentLimits } from './agent-settings.mjs';
+import { agentLimits, AGENT_TOOL_BUDGET } from './agent-settings.mjs';
 import {reasoningText} from './assistant-options.mjs';
-import {beginUsage,recordUsage} from './usage.mjs';
+import {beginUsage,recordUsage,startPerformance} from './usage.mjs';
 export async function readAgentResponse(response, task, progress = () => {}, stream = false, usageRecord = beginUsage(task)) {
     if (!response.ok) {
         void response.body?.cancel().catch(() => {});
@@ -9,25 +9,26 @@ export async function readAgentResponse(response, task, progress = () => {}, str
         const reasons = { 400: '模型参数或工具调用不被接口支持', 401: '密钥验证失败', 402: '余额不足', 403: '接口拒绝访问', 404: '接口路径或模型不存在', 429: '请求限流' };
         throw new WritingRequestError('Agent 请求失败（HTTP ' + code + '）：' + (reasons[code] || '模型服务暂时不可用') + '。');
     }
-    let result = { role: 'assistant', content: '', reasoning_content: '', tool_calls: [] }, finish;
+    let result = { role: 'assistant', content: '', reasoning_content: '', tool_calls: [] }, finish,characters=0;
     const accept = (data, delta = false) => {
         if (data.error) throw new WritingRequestError('模型服务返回错误，请检查连接和工具调用支持。');
         recordUsage(task,usageRecord,data.usage);
         const choice = data.choices?.[0], message = delta ? choice?.delta : choice?.message;
         if (!message && !choice?.finish_reason) return;
-        if (typeof message?.content === 'string') result.content += message.content;
-        const reasoning=reasoningText(message);if(reasoning)result.reasoning_content+=reasoning;
+        if (typeof message?.content === 'string'){result.content += message.content;characters+=message.content.length;}
+        const reasoning=reasoningText(message);if(reasoning){result.reasoning_content+=reasoning;characters+=reasoning.length;}
         task.reasoning=result.reasoning_content;
         if(message?.refusal)throw new WritingRequestError('模型返回了拒绝答复，本轮工具未执行。');
         for (let index = 0; index < (message?.tool_calls || []).length; index++) {
             const call = message.tool_calls[index], slot = delta ? call.index : index;
-            if (!Number.isInteger(slot) || slot < 0 || slot > 7) throw new WritingRequestError('单次工具请求过多，已停止本轮。');
+            if (!Number.isInteger(slot) || slot < 0) throw new WritingRequestError('接口返回了无效的工具序号，本批请求尚未执行，请重试。');
+            if (slot >= AGENT_TOOL_BUDGET) throw new WritingRequestError('模型一次返回的工具请求超过 '+AGENT_TOOL_BUDGET+' 个，本批尚未执行；请重试并要求分批查阅。');
             const target = result.tool_calls[slot] ||= { id: '', type: 'function', function: { name: '', arguments: '' } };
-            if (call.id) target.id += call.id;
-            if (call.function?.name) target.function.name += call.function.name;
-            if (call.function?.arguments) target.function.arguments += call.function.arguments;
+            if (call.id){target.id += call.id;characters+=call.id.length;}
+            if (call.function?.name){target.function.name += call.function.name;characters+=call.function.name.length;}
+            if (call.function?.arguments){target.function.arguments += call.function.arguments;characters+=call.function.arguments.length;}
         }
-        if (JSON.stringify(result).length > 400000) throw new WritingRequestError('模型回复或工具参数过长，已结束等待。');
+        if (characters > 400000) throw new WritingRequestError('模型回复或工具参数过长，已结束等待。');
         if (choice?.finish_reason) finish = choice.finish_reason;
         task.text = result.content; progress(result.content, !!reasoning);
     };
@@ -54,8 +55,16 @@ export async function readAgentResponse(response, task, progress = () => {}, str
             }
         } finally { void reader.cancel().catch(() => {}); }
     }
-    if (finish === 'length') throw new WritingRequestError('模型输出达到长度上限，本轮未完成；不完整的工具请求没有执行。请在工作区设置中提高最大输出；推理模型的思考也会占用输出额度。');
     result.tool_calls = result.tool_calls.filter(Boolean);
+    // Never execute even a syntactically valid prefix of a truncated tool batch.
+    // The loop can regenerate that batch, or continue an ordinary answer instead.
+    if (finish === 'length') {
+        if (!result.content.trim() && !result.tool_calls.length) throw new WritingRequestError('模型输出达到长度上限，但未产生正文；读取进度已保留。思考也占用输出，请提高最大输出后继续任务。');
+        result.truncated = true;
+        result.truncatedTools = result.tool_calls.length > 0;
+        delete result.tool_calls;
+        return result;
+    }
     if (!result.content.trim() && !result.tool_calls.length) throw new WritingRequestError('模型没有返回正文或工具请求，请检查最大回复长度与工具支持。');
     if (!result.reasoning_content) delete result.reasoning_content;
     if (!result.tool_calls.length) delete result.tool_calls;
@@ -71,7 +80,10 @@ export async function agentCompletion(api, messages, tools, task, progress = () 
     Object.assign(generate_data, { messages, tools, tool_choice: tools.length ? 'auto' : undefined, stream: Boolean(nativeSettings.stream_openai) });
     delete generate_data.json_schema;
     delete generate_data.stop; // Roleplay stop strings must not silently end document analysis.
-    const usageRecord=beginUsage(task);
-    const response = await task.wait(fetch('/api/backends/chat-completions/generate', { method: 'POST', headers: api.getRequestHeaders(), body: JSON.stringify(generate_data), signal: task.signal }), 120000);
-    return readAgentResponse(response, task, progress, generate_data.stream, usageRecord);
+    const usageRecord=beginUsage(task),stats=startPerformance(task),started=performance.now();
+    stats.modelRequests++;
+    try{
+        const response = await task.wait(fetch('/api/backends/chat-completions/generate', { method: 'POST', headers: api.getRequestHeaders(), body: JSON.stringify(generate_data), signal: task.signal }), 120000);
+        return await readAgentResponse(response, task, progress, generate_data.stream, usageRecord);
+    }finally{stats.modelMs+=Math.round(performance.now()-started);}
 }

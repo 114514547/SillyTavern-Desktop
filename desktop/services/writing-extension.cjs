@@ -5,6 +5,10 @@ const NAMES = ['manifest.json', 'index.js', 'model.mjs', 'store.mjs', 'discussio
 const OWNER = 'org.sillytavern.desktop.writing';
 const RETIRED = ['modern-agent.css'];
 NAMES.push('icons.mjs','design-system.css','modern-ui.css','modern-shell.mjs','native-ui.css','native-surfaces.mjs','theme.mjs','ui-preferences.mjs','roleplay-projects.mjs','character-manager.mjs','character-manager-data.mjs','character-manager.css');
+NAMES.push('settings-controls.mjs','settings-center.css','agent-settings-ui.mjs','persona-settings.mjs','native-settings-workspaces.mjs');
+NAMES.push('settings-data.mjs','persona-data.mjs','connection-settings.mjs');
+NAMES.push('roleplay-runtime.mjs','roleplay-chat.mjs','roleplay-chat.css','roleplay-settings-data.mjs','world-workspace.mjs','preset-workspace.mjs');
+NAMES.push('agent-files.mjs');
 // Install only a namespaced extension. Never patch upstream core files or user settings.
 async function installWritingExtension({ root, source, backupRoot }) {
   const parent = path.join(root, 'public/scripts/extensions');

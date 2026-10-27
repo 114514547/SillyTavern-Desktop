@@ -1,6 +1,8 @@
 // Original chat nodes, native settings and native storage stay authoritative.
+import {icon} from './icons.mjs';
 import {readUIPreference,writeUIPreference} from './ui-preferences.mjs';
-import {RoleplayProjects,projectKey,validArchive,archiveDue,ARCHIVE_RETENTION} from './roleplay-projects.mjs';
+import {roleplayParameterFields,setRoleplayParameter} from './roleplay-settings-data.mjs';
+import {RoleplayProjects,projectKey,validArchive} from './roleplay-projects.mjs';
 export const ROLEPLAY_DRAWERS = Object.freeze({
     preset:'ai-config-button', model:'sys-settings-button', format:'advanced-formatting-button',
     world:'WI-SP-button', appearance:'user-settings-button', background:'backgrounds-button',
@@ -30,10 +32,10 @@ export function roleplayBooks(context,world={}) {
     return [...names];
 }
 const element=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
-const button=(text,action)=>{const n=element('button',text,'menu_button menu_button_icon interactable');n.type='button';if(action)n.dataset.rpAction=action;return n;};
+const button=(text,action)=>{const n=element('button',text,'menu_button menu_button_icon interactable');n.type='button';if(action)n.dataset.rpAction=action;const glyph=({'project-new':'fa-plus','project-menu':'fa-ellipsis','chat-menu':'fa-ellipsis','chat-archive':'fa-box-archive','library-menu':'fa-ellipsis',sidebar:'fa-panel-left'})[action];if(glyph)n.replaceChildren(icon(glyph));return n;};
 export class RoleplayUI {
-    constructor({ctx,openSettings,getWorld=()=>({}),getModel=()=>'',selectPreset,openGroup,request=globalThis.fetch.bind(globalThis),busy=()=>false,onChatToNovel=()=>{}}) {
-        Object.assign(this,{ctx,openSettings,getWorld,getModel,selectPreset,openGroup,request,busy,onChatToNovel});
+    constructor({ctx,openSettings,getPresets,getWorld=()=>({}),getModel=()=>'',selectPreset,openGroup,request=globalThis.fetch.bind(globalThis),busy=()=>false,onChatToNovel=()=>{}}) {
+        Object.assign(this,{ctx,openSettings,getPresets,getWorld,getModel,selectPreset,openGroup,request,busy,onChatToNovel});
         this.projects=new RoleplayProjects({ctx,request,busy});this.projectChats=new Map();this.loadingProjects=new Map();this.active=false;this.pending=false;this.limit=100;this.chats=[];
         const prefs=readUIPreference('roleplayLayout',null,'desktop-roleplay-layout-v1');
         Object.assign(this,roleplayLayout(prefs,!matchMedia('(max-width:800px)').matches));
@@ -69,17 +71,16 @@ export class RoleplayUI {
         this.list.addEventListener('keydown',e=>{if(e.key==='ContextMenu'||(e.shiftKey&&e.key==='F10')){const row=e.target.closest('[data-rp-chat],[data-rp-project]');if(row){e.preventDefault();const r=row.getBoundingClientRect();this.showProjectMenu(row.dataset.rpProject,row.dataset.rpChat,r.left,r.bottom);}}});
         document.addEventListener('pointerdown',e=>{if(this.menu&&!this.menu.contains(e.target))this.closeMenu();});
         document.addEventListener('keydown',e=>{if(e.key==='Escape')this.closeMenu();});
-        void this.guard(()=>this.cleanupArchives());
         const c=this.ctx();
         for(const name of ['CHAT_CHANGED','CHAT_CREATED','CHAT_DELETED','CHAT_RENAMED','CHARACTER_EDITED','CHARACTER_DELETED','CHARACTER_DUPLICATED','CHARACTER_PAGE_LOADED','GROUP_UPDATED','GROUP_CHAT_DELETED','GROUP_CHAT_CREATED'])if(c.eventTypes[name])c.eventSource.on(c.eventTypes[name],()=>this.refresh());
         if(c.eventTypes.CHARACTER_RENAMED)c.eventSource.on(c.eventTypes.CHARACTER_RENAMED,(oldAvatar,newAvatar)=>this.guard(async()=>{await this.projects.renameOwner(oldAvatar,newAvatar);const key=projectKey(oldAvatar),next=projectKey(newAvatar);if(this.projectChats.has(key)){this.projectChats.set(next,this.projectChats.get(key));this.projectChats.delete(key);}}));
         for(const name of ['SETTINGS_UPDATED','OAI_PRESET_CHANGED_AFTER','PRESET_CHANGED','CHATCOMPLETION_SOURCE_CHANGED','CHATCOMPLETION_MODEL_CHANGED','WORLDINFO_SETTINGS_UPDATED','WORLDINFO_UPDATED','GENERATION_STARTED','GENERATION_ENDED','GENERATION_STOPPED'])if(c.eventTypes[name])c.eventSource.on(c.eventTypes[name],()=>this.refreshControls());
         document.addEventListener('change',e=>{if(e.target.closest('#top-settings-holder')){clearTimeout(this.changeTimer);this.changeTimer=setTimeout(()=>this.refreshControls(),120);}});
-        for(const name of ['GENERATION_ENDED','GENERATION_STOPPED'])if(c.eventTypes[name])c.eventSource.on(c.eventTypes[name],()=>{this.refresh();void this.guard(()=>this.cleanupArchives());});
+        for(const name of ['GENERATION_ENDED','GENERATION_STOPPED'])if(c.eventTypes[name])c.eventSource.on(c.eventTypes[name],()=>{this.refresh();});
         const apiIcon=document.getElementById('API-status-top');if(apiIcon){this.connectionObserver=new MutationObserver(()=>this.refreshControls());this.connectionObserver.observe(apiIcon,{attributes:true,attributeFilter:['class','title']});}
     }
     setActive(active){
-        this.active=active;document.body.classList.toggle('dw-rp-mode',active);if(!active){this.closeMenu();this.archiveDialog?.close();this.empty.hidden=true;}this.header.hidden=!active;this.applySidebar(false);this.applyRight();
+        this.active=active;this.sheld.hidden=!active;if(!active)this.chat?.setLegacy(false);document.body.classList.toggle('dw-rp-mode',active);if(!active){this.closeMenu();this.archiveDialog?.close();this.empty.hidden=true;}this.header.hidden=!active;this.applySidebar(false);this.applyRight();
         if(active){this.refresh();if(this.rightOpen&&this.rightEntire){if(this.rightTab==='preset')this.quickParameters();else void this.guard(()=>this.native(this.rightTab));}}else{this.quick?.remove();this.quick=null;}
     }
     async guard(task){try{return await task();}catch(error){this.status.textContent=error?.name==='AbortError'?'':(error?.message||'操作失败，请重新打开设置中心重试。');globalThis.toastr?.warning(this.status.textContent,'角色与会话');}}
@@ -120,22 +121,16 @@ export class RoleplayUI {
     }
     quickParameters(){
         this.quick?.remove();const c=this.ctx();this.quick=element('div',undefined,'dw-rp-quick');this.right.append(this.quick);
-        const ids=c.mainApi==='openai'?['temp_openai','openai_max_tokens','openai_max_context']:c.mainApi==='novel'?['temp_novel','amount_gen','max_context']:c.mainApi==='textgenerationwebui'?['temp_textgenerationwebui','amount_gen','max_context']:['temp','amount_gen','max_context'];
-        for(const [index,label]of ['创造力 / 温度','最大回复长度','上下文容量'].entries()){
-            const native=document.getElementById(ids[index]);if(!native)continue;const field=element('label',undefined,'dw-rp-parameter'),title=element('span',label),row=element('div',undefined,'dw-rp-parameter-value'),range=element('input'),number=element('input');range.type='range';number.type='number';
-            for(const n of [range,number]){n.min=native.min;n.max=native.max;n.step=native.step;n.value=native.value;n.setAttribute('aria-label',label+(n===range?'滑块':'数值'));n.disabled=this.busy();}
-            const change=n=>{if(this.busy())return;native.value=n.value;globalThis.jQuery(native).trigger('input');range.value=native.value;number.value=native.value;};range.oninput=()=>change(range);number.onchange=()=>change(number);row.append(title,number);field.append(row,range);this.quick.append(field);
-        }
-        if(c.mainApi==='openai'){const label=element('label',undefined,'dw-rp-quick-check'),check=element('input');check.type='checkbox';check.checked=!!c.chatCompletionSettings.stream_openai;check.onchange=()=>{if(this.busy())return;globalThis.jQuery('#stream_toggle').prop('checked',check.checked).trigger('change');};label.append(check,element('span','流式传输'));this.quick.append(label);}
-        const full=element('button','更多参数与预设','menu_button');full.type='button';full.onclick=()=>void globalThis.SillyTavernDesktopWriting?.settingsDialog?.open('params');this.quick.append(full);const settings=button('角色 · 世界书 · 全部设置','all-settings');this.quick.append(settings);this.applyRight();
+        if(c.mainApi==='openai'){
+            for(const [key,label,min,step]of roleplayParameterFields.slice(0,3)){const field=element('label',undefined,'dw-rp-parameter'),row=element('div',undefined,'dw-rp-parameter-value'),number=element('input');number.type='number';number.min=min;number.step=step;number.value=c.chatCompletionSettings[key];number.setAttribute('aria-label',label);number.disabled=this.busy();number.onchange=()=>void this.guard(async()=>{if(this.busy())throw Error('请先结束当前操作。');await setRoleplayParameter(this.ctx,key,Number(number.value));});row.append(element('span',label),number);field.append(row);this.quick.append(field);}
+            const label=element('label',undefined,'dw-rp-quick-check'),check=element('input');check.type='checkbox';check.checked=!!c.chatCompletionSettings.stream_openai;check.disabled=this.busy();check.onchange=()=>void this.guard(async()=>{if(this.busy())throw Error('请先结束当前操作。');await setRoleplayParameter(this.ctx,'stream_openai',check.checked);});label.append(check,element('span','流式传输'));this.quick.append(label);
+        }else this.quick.append(element('p','当前接口的专用参数保留在完整参数页。'));
+        const full=element('button','参数与提示词预设','menu_button');full.type='button';full.onclick=()=>void globalThis.SillyTavernDesktopWriting?.settingsDialog?.open('params');this.quick.append(full,button('角色 · 世界书 · 全部设置','all-settings'));this.applyRight();
     }
     persistLayout(){writeUIPreference('roleplayLayout',{sidebar:this.sidebar,rightOpen:this.rightOpen,rightTab:this.rightTab,rightWidth:this.rightWidth,rightEntire:this.rightEntire});}
     syncPreset(){
-        const c=this.ctx(),api=c.mainApi==='koboldhorde'?'kobold':c.mainApi;
-        const source=[...document.querySelectorAll('#top-settings-holder select[data-preset-manager-for]')].find(n=>n.dataset.presetManagerFor.split(',').includes(api));
-        const signature=source?JSON.stringify([api,[...source.options].map(o=>[o.value,o.textContent,o.disabled])]):'';
-        if(signature!==this.presetSignature||!this.preset.options.length){this.presetSignature=signature;this.preset.replaceChildren();if(source){for(const o of source.options)this.preset.append(o.cloneNode(true));}else{const o=element('option','当前接口：打开参数');o.value='';this.preset.append(o);}}
-        if(source)this.preset.value=source.value;this.preset.disabled=!source||this.busy()||this.pending||this.selectingPreset;
+        const {records=[],selected=''}=this.getPresets?.()||{},signature=JSON.stringify(records.map(r=>r.name));
+        if(signature!==this.presetSignature||!this.preset.options.length){this.presetSignature=signature;this.preset.replaceChildren();for(const record of records){const option=element('option',record.name);option.value=record.name;this.preset.append(option);}}this.preset.value=selected;this.preset.disabled=!records.length||this.busy()||this.pending||this.selectingPreset;
     }
     refreshControls(){
         if(!this.active)return;
@@ -160,7 +155,7 @@ export class RoleplayUI {
     }
     renderLibrary(){
         if(!this.active)return;const c=this.ctx(),query=this.search.value.trim().toLocaleLowerCase();this.list.replaceChildren();
-        this.library.dataset.avatars=String(this.projects.state.avatars===true);
+        this.library.dataset.compact=String(this.projects.state.compact===true);
         const entities=[...(c.characters||[]).filter(Boolean).map(ch=>this.projects.entity(projectKey(ch.avatar))),...(c.groups||[]).map(g=>this.projects.entity(projectKey(String(g.id),true)))].filter(Boolean);
         let count=0;
         for(const entity of entities){
@@ -247,7 +242,7 @@ export class RoleplayUI {
     }
     async archiveItem(entity,file){
         const c=this.ctx();if(this.busy()||this.pending)throw Error('请先结束当前生成或操作，再归档。');
-        const result=await c.callGenericPopup(element('p',file?'归档此对话？30 天内可恢复，到期永久删除。':'归档此角色项目及其现有对话？角色卡保留，30 天内可恢复，到期永久删除对话。'),c.POPUP_TYPE.CONFIRM);
+        const result=await c.callGenericPopup(element('p',file?'归档此对话？仅从常用列表隐藏，长期保留，可随时恢复。':'归档此角色项目及其现有对话？角色卡和对话长期保留，可随时恢复。'),c.POPUP_TYPE.CONFIRM);
         if(result!==c.POPUP_RESULT.AFFIRMATIVE)return;
         await this.mutate(async()=>{
             const rows=await this.projects.chats(entity),visible=rows.filter(t=>!this.projects.archived(entity.key,t.file)),chosen=file?visible.filter(t=>t.file===file):visible;
@@ -256,17 +251,12 @@ export class RoleplayUI {
             await this.projects.archive(entity,chosen,file?'chat':'project');
         });
     }
-    async cleanupArchives(){
-        if(this.cleaning||this.pending||this.busy())return;const due=this.projects.state.archive.filter(a=>archiveDue(a));if(!due.length)return;this.cleaning=true;this.pending=true;this.closeMenu();
-        try{let failed=0;for(const a of due){if(a.chats.some(t=>this.projects.current(a.key,t.file)))continue;try{await this.projects.removeArchive(a.id,{expiredOnly:true});}catch{failed++;}}if(failed)throw Error(failed+' 项到期归档暂未清理，已保留记录，可在归档区重试。');}
-        finally{this.cleaning=false;this.pending=false;this.refreshControls();this.renderLibrary();}
-    }
     showArchives(){
         this.archiveDialog?.remove();const dialog=element('dialog',undefined,'dw-rp-archives');this.archiveDialog=dialog;dialog.setAttribute('aria-label','已归档的角色项目与对话');
-        const header=element('header');header.append(element('strong','已归档'));const close=button('关闭');close.onclick=()=>dialog.close();header.append(close);dialog.append(header,element('p','归档保留 30 天，到期后在下次启动时永久清理。','dw-rp-tree-hint'));
+        const header=element('header');header.append(element('strong','已归档'));const close=button('关闭');close.onclick=()=>dialog.close();header.append(close);dialog.append(header,element('p','归档长期保留，不会自动删除。恢复后重新显示在常用列表；永久删除需单独确认。','dw-rp-tree-hint'));
         const list=element('div');dialog.append(list);document.body.append(dialog);
         const render=()=>{list.replaceChildren();for(const a of this.projects.state.archive.filter(validArchive)){
-            const row=element('div',undefined,'dw-rp-archive-row'),info=element('div');info.append(element('strong',a.kind==='project'?a.name:(a.chats[0]?.title||'对话')),element('small',(a.kind==='project'?'角色项目 · '+a.chats.length+' 个对话':a.name)+' · 剩余 '+Math.max(0,Math.ceil((a.at+ARCHIVE_RETENTION-Date.now())/86400000))+' 天'));
+            const row=element('div',undefined,'dw-rp-archive-row'),info=element('div');info.append(element('strong',a.kind==='project'?a.name:(a.chats[0]?.title||'对话')),element('small',(a.kind==='project'?'角色项目 · '+a.chats.length+' 个对话':a.name)+' · 长期保留'));
             const restore=button('恢复');restore.onclick=()=>void this.guard(async()=>{if(this.busy()||this.pending)throw Error('请先结束当前操作。');await this.mutate(()=>this.projects.restore(a.id));render();});
             const remove=button('永久删除');remove.classList.add('dw-danger-action');remove.onclick=()=>void this.guard(async()=>{const c=this.ctx(),yes=await c.callGenericPopup(element('p','永久删除这些归档对话？此操作无法恢复，角色卡不受影响。'),c.POPUP_TYPE.CONFIRM);if(yes!==c.POPUP_RESULT.AFFIRMATIVE)return;await this.mutate(()=>this.projects.removeArchive(a.id));render();});
             row.append(info,restore,remove);list.append(row);
@@ -283,7 +273,7 @@ export class RoleplayUI {
     applySidebar(persist=true){this.library.hidden=!this.active||!this.sidebar;this.sheld.dataset.rpSidebar=String(this.sidebar);this.toggle.setAttribute('aria-expanded',String(this.sidebar));if(persist)this.persistLayout();}
     async action(n){
         const action=n.dataset.rpAction,c=this.ctx();if(this.pending)throw Error('正在保存或清理归档，请稍候。');
-        if(action==='library-menu'){const r=n.getBoundingClientRect();this.showMenu([['添加 / 管理角色',()=>this.native('character')],['已归档',()=>this.showArchives()],[this.projects.state.avatars?'关闭悬浮头像':'开启悬浮头像',()=>this.mutate(()=>this.projects.commit(()=>{this.projects.state.avatars=!this.projects.state.avatars;}))]],r.left,r.bottom);}
+        if(action==='library-menu'){const r=n.getBoundingClientRect();this.showMenu([['添加 / 管理角色',()=>this.native('character')],['已归档',()=>this.showArchives()],[this.projects.state.compact?'标准列表':'紧凑列表',()=>this.mutate(()=>this.projects.commit(()=>{this.projects.state.compact=!this.projects.state.compact;}))]],r.left,r.bottom);}
         else if(action==='archives')this.showArchives();
         else if(action==='project-fold'){const key=n.dataset.key;this.projects.update(key,{collapsed:!this.projects.project(key).collapsed});writeUIPreference('roleplayProjects',this.projects.state);this.renderLibrary();if(!this.projects.project(key).collapsed)await this.loadProject(this.projects.entity(key));}
         else if(action==='project-menu'||action==='chat-menu'){const r=n.getBoundingClientRect();this.showProjectMenu(n.dataset.key,n.dataset.file,r.left,r.bottom);}

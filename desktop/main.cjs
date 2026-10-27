@@ -62,7 +62,7 @@ async function external(url){
   if(response===1)await shell.openExternal(url);
 }
 function createWindow(isLauncher,origin){
-  const w=new BrowserWindow({...bounds(),minWidth:800,minHeight:650,title:'SillyTavern Desktop',icon:path.join(__dirname,'../resources/icon.ico'),show:false,focusable:!backgroundTest,skipTaskbar:backgroundTest,autoHideMenuBar:!isLauncher,
+  const w=new BrowserWindow({...bounds(),minWidth:800,minHeight:650,title:'SillyTavern Desktop',icon:path.join(__dirname,'../resources/icon.ico'),backgroundColor:'#0e0e11',show:false,focusable:!backgroundTest,skipTaskbar:backgroundTest,autoHideMenuBar:!isLauncher,
     ...(process.platform === 'win32' && !backgroundTest ? {
       titleBarStyle: 'hidden',
       titleBarOverlay: {
@@ -109,6 +109,7 @@ function setupWorkspace(){
     const origin=lifecycle?.active?.url;
     if(!origin || event.sender!==window?.webContents || event.senderFrame!==window.webContents.mainFrame || !localURL(event.senderFrame.url,origin))return {ok:false};
     if(readyWebContents!==event.sender){readyWebContents=event.sender;startupMark('frontend-interactive');void saveStartupTrace().catch(()=>{});}
+    event.sender.send('workspace:ui-ready');
     return {ok:true};
   });
   ipcMain.handle('workspace:writingProtection',createProtectionHandler(()=>({active:lifecycle?.active,window,selected})));

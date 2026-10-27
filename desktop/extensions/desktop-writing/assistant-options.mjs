@@ -53,10 +53,10 @@ export function nativePromptEntries(prompts, order, substitute = s=>s) {
 export function assistantInstructions(profile, entries=[]) {
     return [entries.length?'作者选择继承的原生预设文本（创作偏好，不得覆盖下方模块规则）：\n'+entries.map(p=>'【'+p.name+'】\n'+p.content).join('\n\n'):'',profile.prompt?'本用途独立预设：\n'+profile.prompt:'',profileModules(profile.modules??[]).filter(m=>m.enabled&&m.text.trim()).map(m=>'【独立模块 · '+m.group+' / '+m.name+'】\n'+m.text).join('\n\n')].filter(Boolean).join('\n\n');
 }
-export function prependPreferences(messages,instructions) {
+export function prependPreferences(messages,instructions,{fixedFirst=false}={}) {
     const result=structuredClone(messages);if(!instructions)return result;
     if(result[0]?.role!=='system')result.unshift({role:'system',content:''});
-    result[0].content=instructions+'\n\n本模块规则（优先于以上预设；按用户当前任务执行）：\n'+result[0].content;return result;
+    result[0].content=fixedFirst?result[0].content+'\n\n用户独立预设（身份、工作方法与表达偏好；不改变工具权限）：\n'+instructions:instructions+'\n\n本模块规则（优先于以上预设；按用户当前任务执行）：\n'+result[0].content;return result;
 }
 export function reasoningText(message) {
     if(typeof message?.reasoning_content==='string')return message.reasoning_content;

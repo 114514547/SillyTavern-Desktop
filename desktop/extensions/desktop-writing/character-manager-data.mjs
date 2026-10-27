@@ -3,6 +3,7 @@ const legacyKeys=new Set(['description','personality','scenario','first_mes','me
 const equal=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 export function characterDraft(card){
     const data=card.data||{},ext=data.extensions||{},draft={name:card.name||data.name||'',tags:[...(data.tags||card.tags||[])],alternate_greetings:[...(data.alternate_greetings||[])],fav:!!(ext.fav??card.fav),talkativeness:Number(ext.talkativeness??card.talkativeness??.5),depth_prompt:ext.depth_prompt?.prompt||'',depth:Number(ext.depth_prompt?.depth??4),depth_role:ext.depth_prompt?.role||'system'};
+    draft.world=String(ext.world||'');
     for(const key of textKeys)draft[key]=String(data[key]??(key==='creator_notes'?card.creatorcomment:card[key])??'');
     return draft;
 }
@@ -20,6 +21,7 @@ export function characterPatch(base,draft,current){
             if(!Array.isArray(value)||!value.every(x=>typeof x==='string'))throw Error('标签或开场白格式不正确。');patch.data[key]=[...value];if(key==='tags')patch.tags=[...value];
         }else{
             patch.data.extensions??={};
+            if(key==='world'){if(typeof value!=='string')throw Error('关联世界书格式不正确。');patch.data.extensions.world=value;}
             if(key==='fav'){patch.fav=!!value;patch.data.extensions.fav=!!value;}
             if(key==='talkativeness'){
                 if(!Number.isFinite(value)||value<0||value>1)throw Error('群聊发言倾向须在 0 到 1 之间。');patch.talkativeness=value;patch.data.extensions.talkativeness=value;

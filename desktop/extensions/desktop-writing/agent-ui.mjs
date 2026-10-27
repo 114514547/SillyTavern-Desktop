@@ -7,7 +7,8 @@ import {AgentLayout} from './agent-layout.mjs';
 import {icon} from './icons.mjs';
 import {Popup,POPUP_RESULT} from '/scripts/popup.js';
 import {resolveAssistant} from './assistant-runtime.mjs';
-import {renderAssistantSettings,reasoningPanel,updateReasoning,generationPanel} from './assistant-ui.mjs';
+import {reasoningPanel,updateReasoning} from './assistant-ui.mjs';
+import {startPerformance,finishPerformance} from './usage.mjs';
 const make = (tag, text, className) => { const n = document.createElement(tag); if (text !== undefined) n.textContent = text; if (className) n.className = className; return n; };
 const button = (label, action, glyph) => { const b = make('button', undefined, 'menu_button menu_button_icon interactable'); b.type = 'button'; b.dataset.action = action; if (glyph) b.append(icon(glyph)); b.append(make('span', label)); return b; };
 const uid = () => crypto.randomUUID();
@@ -35,15 +36,15 @@ export class LocalAgentUI {
         const css = make('link'); css.rel = 'stylesheet'; css.href = new URL('./agent.css', import.meta.url).href; this.shadow.append(css);
         const app = make('div'); app.id = 'agent-app';
         app.innerHTML = `<header id="agent-toolbar"><button id="agent-workspace" class="menu_button" data-action="choose" type="button">＋ 选择本地文件夹</button><button class="menu_button" data-action="files" type="button" aria-expanded="false">文件</button><button class="menu_button" data-action="threads" type="button" aria-expanded="false">讨论记录</button><button class="menu_button" data-action="new" type="button">＋ 新讨论</button><button class="menu_button" data-action="settings" type="button">参考设置</button></header>
-        <div id="agent-main"><dialog id="agent-drawer" hidden></dialog><section id="agent-viewer" aria-label="文档查看与修改" hidden><header><span id="agent-file-name"></span><button class="menu_button" data-action="close-viewer" type="button">收起</button></header><div id="agent-doc-tools"></div><div id="agent-doc"></div><div id="agent-doc-actions"></div></section>
+        <div id="agent-main"><section id="agent-viewer" aria-label="文档查看与修改" hidden><header><span id="agent-file-name"></span><button class="menu_button" data-action="close-viewer" type="button">收起</button></header><div id="agent-doc-tools"></div><div id="agent-doc"></div><div id="agent-doc-actions"></div></section>
         <section id="agent-chat" aria-label="设定讨论"><header id="agent-threadbar"><span id="agent-thread-title">新讨论</span><span id="agent-save-status"></span></header><div id="agent-log" role="log" aria-label="讨论内容"></div><form id="agent-form"><div id="agent-refs"></div><textarea id="agent-input" class="text_pole" rows="3" aria-label="本地工作区讨论输入" placeholder="讨论设定，或让我查阅、整理文档……\nEnter 发送，Shift+Enter 换行" maxlength="120000"></textarea><div id="agent-input-actions"><button class="menu_button" data-action="files" type="button">引用文件</button><label><input id="agent-write" type="checkbox">可提出文档修改</label><button id="agent-stop" class="menu_button" data-action="stop" type="button" hidden>停止</button><button id="agent-send" class="menu_button" type="submit">发送</button></div></form></section></div><footer id="agent-status" role="status" aria-live="polite">可先讨论想法，也可以选择本地设定文件夹，无需创建小说。</footer>`;
         this.shadow.append(app);this.layout=new AgentLayout(this);this.layout.mount();
         this.$('#agent-form').addEventListener('submit', e => { e.preventDefault(); void this.guard(() => this.send()); });
         this.$('#agent-input').addEventListener('input', e => { if (!this.thread) return; this.thread.draft = e.target.value; this.dirty(); });
         this.$('#agent-input').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); void this.guard(() => this.send()); } });
-        this.$('#agent-write').addEventListener('change', e => { this.writable = e.target.checked; this.message(this.writable ? '可以提出修改建议；查看对照后，点击保存才会写入本地文档。' : '本轮仅讨论，不修改本地文件。'); });
+        this.$('#agent-write').addEventListener('change', e => { this.writable = e.target.checked; this.message(this.writable ? '可以提出修改建议；查看对照后，点击保存才会写入本地文档。' : '本轮仅讨论，不修改本地文件。');this.renderRefs(); });
         this.shadow.addEventListener('click', e => {
-            this.closeContextMenu();
+            if(!this.contextMenu?.contains(e.target)&&!e.target.closest('[data-agent-menu]'))this.closeContextMenu();
             const target = e.target.closest('button'); if (!target) return;
             if (this.applying||this.mutating) { this.message('正在保存或处理工作区操作，请稍候…'); return; }
             if (target.dataset.file) void this.guard(() => this.openFile(target.dataset.file));
@@ -64,7 +65,7 @@ export class LocalAgentUI {
             }
             else if (target.dataset.action) void this.guard(() => this.action(target.dataset.action));
         });
-        window.addEventListener('click', () => this.closeContextMenu());
+        window.addEventListener('click', e => {if(!e.composedPath().includes(this.host))this.closeContextMenu();});
         this.shadow.addEventListener('keydown',e=>{
             if(e.key==='Escape'){this.closeContextMenu();return;}
             if(e.key==='ContextMenu'||(e.shiftKey&&e.key==='F10')){const row=e.target.closest('.agent-thread-row,.agent-project-row');if(!row)return;e.preventDefault();const r=row.getBoundingClientRect(),thread=row.querySelector('[data-thread]'),root=row.querySelector('[data-root]');this.showContextMenu({clientX:r.left+12,clientY:r.bottom},{type:thread?'thread':'root',id:thread?.dataset.thread||(root?.dataset.root==='none'?null:root?.dataset.root),title:thread?.textContent,name:root?.textContent});}
@@ -77,9 +78,9 @@ export class LocalAgentUI {
         const title = make('div', item.title || item.name || '操作菜单', 'agent-context-menu-title');
         menu.append(title);
         if (item.type === 'thread') {
-            const renameBtn = make('button', '✏️ 重命名讨论', 'agent-context-menu-item');
+            const renameBtn = make('button', '重命名讨论', 'agent-context-menu-item');
             renameBtn.onclick = () => {this.closeContextMenu();void this.guard(()=>this.renameThreadItem(item.id));};
-            const exportBtn = make('button', '📤 导出 Markdown 记录', 'agent-context-menu-item');
+            const exportBtn = make('button', '导出 Markdown 记录', 'agent-context-menu-item');
             exportBtn.onclick = () => {
                 this.closeContextMenu();
                 const th = this.data.threads.find(t => t.id === item.id);
@@ -95,12 +96,13 @@ export class LocalAgentUI {
                 this.message(`已导出讨论“${th.title}”为 Markdown 文件。`);
             };
             const sep = make('div', undefined, 'agent-context-menu-sep');
-            const delBtn = make('button', '🗑️ 删除此讨论', 'agent-context-menu-item danger');
+            const delBtn = make('button', '删除此讨论', 'agent-context-menu-item danger');
             delBtn.onclick = () => {
                 this.closeContextMenu();
                 void this.guard(() => this.deleteThreadItem(item.id));
             };
-            menu.append(renameBtn, exportBtn, sep, delBtn);
+            const copyBtn=make('button','复制讨论','agent-context-menu-item');copyBtn.onclick=()=>{this.closeContextMenu();void this.guard(()=>this.copyThreadItem(item.id));};
+            menu.append(renameBtn,copyBtn,exportBtn,sep,delBtn);
         } else if (item.type === 'root') {
             const newThBtn = make('button', '＋ 新建讨论', 'agent-context-menu-item');
             newThBtn.onclick = () => {
@@ -109,8 +111,9 @@ export class LocalAgentUI {
             };
             menu.append(newThBtn);
             if (item.id) {
+                const rename=make('button','重命名项目','agent-context-menu-item');rename.onclick=()=>{this.closeContextMenu();void this.guard(async()=>{if(this.job||this.editorDirty)throw new WritingRequestError('请先结束生成，并保存或放弃文档编辑。');const root=this.data.roots.find(r=>r.id===item.id);if(!root)return;const name=await Popup.show.input('重命名项目','只修改显示名称，原文件夹不会改名。',root.name);if(!name?.trim())return;Object.assign(root,await this.bridge('saveProject',{rootId:root.id,name:name.trim().slice(0,100),revision:root.settingsRevision??null}));this.render();});};menu.append(rename);
                 const sep = make('div', undefined, 'agent-context-menu-sep');
-                const removeBtn = make('button', '✕ 解除系列绑定', 'agent-context-menu-item danger');
+                const removeBtn = make('button', '解除系列绑定', 'agent-context-menu-item danger');
                 removeBtn.onclick = () => {
                     this.closeContextMenu();
                     void this.guard(() => this.removeRootItem(item.id));
@@ -139,6 +142,12 @@ export class LocalAgentUI {
         const title=await Popup.show.input('重命名讨论','讨论名称',thread.title||'新讨论');if(!title?.trim())return;
         const candidate={...thread,title:title.trim().slice(0,200),customTitle:true};
         const revision=await this.bridge('saveThread',{thread:candidate,revision:thread.revision??null});Object.assign(thread,candidate,{revision});this.render();
+    }
+    async copyThreadItem(id){
+        if(this.job||this.editorDirty||this.applying)throw new WritingRequestError('请先结束生成，并保存或放弃文档编辑。');
+        await this.flush();const source=this.data.threads.find(t=>t.id===id);if(!source)return;
+        const copy=structuredClone(source);copy.id=uid();copy.title=(source.title+' · 副本').slice(0,200);copy.revision=null;copy.customTitle=true;
+        copy.revision=await this.bridge('saveThread',{thread:copy,revision:null});this.data.threads.push(copy);this.layout.renderSidebar();this.message('已将讨论复制到原项目，原讨论保持不变。');
     }
     async deleteThreadItem(id) {
         if(this.mutating||this.applying||this.editorDirty)throw new WritingRequestError('请先保存或放弃文档编辑，再删除讨论。');
@@ -211,74 +220,51 @@ export class LocalAgentUI {
         } catch { return false; }
     }
     renderRefs() {
-        const parent = this.$('#agent-refs'),write=this.$('#agent-write-control'); parent.replaceChildren();this.layout?.renderControls();if(this.thread)parent.append(make('small',(this.writable?'可提出修改 · 保存前需确认':'仅讨论')+' · 角色卡'+(this.thread.useCharacter?'开':'关')+' / 世界书'+(this.thread.useWorld?'开':'关')));if(write)parent.append(write);
-        for (const name of this.references) { const b = button(name + ' ×', 'remove'); b.dataset.remove = name; parent.append(b); }
+        const parent=this.$('#agent-refs');parent.replaceChildren();this.layout?.renderControls();parent.hidden=!this.references.length;
+        for(const name of this.references){const b=button(name.split('/').at(-1)+' ×','remove','fa-paperclip');b.dataset.remove=name;b.title=name;parent.append(b);}
     }
     render() {
         this.layout?.render();
         this.$('#agent-workspace').textContent = this.root ? '📂 ' + this.root.name : '项目';
         this.$('#agent-workspace').title = (this.root?.name ? this.root.name + ' · ' : '') + '展开或收起项目与讨论';
         this.$('#agent-input').value = this.thread?.draft || ''; this.$('#agent-write').checked = this.writable;this.$('#agent-write').disabled=!!this.job;
-        this.$('#agent-send').disabled = this.busy() || !this.thread; this.$('#agent-stop').hidden = !this.job; this.renderMessages(); this.renderRefs(); this.renderDrawer();
+        this.$('#agent-send').disabled = this.busy() || !this.thread; this.$('#agent-stop').hidden = !this.job; this.renderMessages(); this.renderRefs(); this.renderDrawer();this.layout?.resizeInput();
         if (this.viewer) this.renderViewer();
     }
     renderMessages() {
-        const log = this.$('#agent-log'), nearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 100; log.replaceChildren();
-        if (!this.thread?.messages.length) {
-            const welcome = make('div', undefined, 'agent-welcome'); welcome.append(make('p', this.root ? '可以从这个系列的人物、历史或世界规则开始讨论。' : '聊设定、整理想法，或选择一个本地资料文件夹。'));this.layout.welcome(welcome);log.append(welcome);
-        }
-        for (const message of this.thread?.messages || []) {
-            const row = make('article', undefined, 'agent-message'); row.dataset.role = message.role; row.append(make('div', message.role === 'user' ? '你' : '设定助手', 'agent-name'));
-            if (message.incomplete) row.append(make('small', '未完成回复 · 未作为已确认上下文发送'));
-            const body = make('div', undefined, 'agent-message-text'); body.innerHTML = this.markdown(message.text); row.append(body);
-            if(message.generationInfo)row.append(generationPanel({...message.generationInfo,usage:message.usage??message.generationInfo.usage}));
+        const log=this.$('#agent-log'),nearBottom=log.scrollHeight-log.scrollTop-log.clientHeight<100;log.replaceChildren();
+        if(!this.thread?.messages.length){const welcome=make('div',undefined,'agent-welcome');welcome.append(make('h2','从一个问题开始。'),make('p',this.root?'选择资料、聊一个想法，或继续当前的创作。':'聊设定、整理想法，或选择一个本地资料文件夹。'));this.layout.welcome(welcome);log.append(welcome);}
+        for(const message of this.thread?.messages||[]){
+            const row=make('article',undefined,'agent-message');row.dataset.role=message.role;
+            if(message.role==='assistant')row.append(make('div','✧ 设定助手','agent-name'));
+            if(message.incomplete)row.append(make('small','未完成回复 · 不作为已确认上下文发送','agent-incomplete'));
+            if(message.failure)row.append(make('p',message.failure,'agent-failure'));
+            const body=make('div',undefined,'agent-message-text');body.innerHTML=this.markdown(message.text);row.append(body);
             if((message.reasoning||this.reasoningCache.get(message))&&selectedProfile(this.bank()).showReasoning)row.append(reasoningPanel(message.reasoning||this.reasoningCache.get(message),{incomplete:message.incomplete}));
-            if (message.records?.length) {
-                const detail = make('details'), summary = make('summary', '操作记录 · ' + message.records.length + ' 项'); detail.append(summary);
-                for (const record of message.records) {
-                    const label = ({ read_file: '读取', list_files: '查看目录', search_files: '搜索', propose_edit: '修改建议', create_file: '新建建议' })[record.tool] || '工具';
-                    const line = make('div', undefined, 'agent-record');
-                    if (record.proposalId) { const b = button(label + '：' + record.path, 'proposal'); b.dataset.proposal = record.proposalId; line.append(b); }
-                    else if (record.tool === 'read_file' && record.ok) { const range = Number.isInteger(record.offset) ? ` · 字符 ${record.offset}–${record.end} / ${record.totalCharacters}` : ''; const b = button('读取：' + record.path + range + (record.duplicate ? ' · 重复范围已跳过' : record.cached ? ' · 本轮快照' : ''), 'file'); b.dataset.file = record.path; line.append(b); }
-                    else line.textContent = label + '：' + (record.ok ? record.query || record.path || '工作区根目录' : record.error || '操作未完成');
-                    detail.append(line);
-                } row.append(detail);
+            if(message.role==='assistant'){
+                const footer=make('div',undefined,'agent-reply-footer');if(message.records?.length||message.citations?.length)footer.append(this.layout.readingSummary(message));
+                const actions=make('div',undefined,'agent-reply-actions'),copy=button('','copy-reply','fa-copy');delete copy.dataset.action;copy.title='复制回复';copy.setAttribute('aria-label',copy.title);copy.onclick=()=>void this.guard(async()=>{await navigator.clipboard.writeText(message.text);this.message('回复已复制。');});
+                const more=button('');delete more.dataset.action;more.replaceChildren(icon('fa-ellipsis'));more.title='回复操作';more.setAttribute('aria-label',more.title);more.dataset.agentMenu='true';more.onclick=()=>{const items=[['查看本轮上下文',()=>this.layout.inspect('context',message)],['查看配置、性能与用量',()=>this.layout.inspect('context',message)]];if(message.text.trim()&&this.root)items.push(['加入项目摘要草稿',()=>{this.notesDraft=message.text;this.notesSources=(message.citations||[]).filter(c=>c.revision).slice(0,20);return this.openSettings('reference');}]);if(message.text.trim()&&this.onAdopt)items.push(['发送到小说…',()=>this.onAdopt(message.text)]);this.layout.showActions(more,items);};actions.append(copy,more);footer.append(actions);row.append(footer);
             }
-            const citations = make('div', undefined, 'agent-citations');
-            for (const citation of message.citations || []) { const b = button(citation.path, 'file', 'fa-file-lines'); b.dataset.file = citation.path; citations.append(b); }
-            for (const record of message.records || []) if (record.proposalId) { const b = button('查看修改：' + record.path, 'proposal', 'fa-code-compare'); b.dataset.proposal = record.proposalId; citations.append(b); }
-            if(message.role==='assistant'){if(this.root){const note=button('加入项目摘要草稿','notes-draft');note.onclick=()=>{this.notesDraft=message.text;this.notesSources=(message.citations||[]).filter(c=>c.revision).slice(0,20);this.drawer='settings';this.renderDrawer();this.shadow.querySelector('textarea[aria-label="作者确认的项目摘要"]')?.closest('details')?.setAttribute('open','');};citations.append(note);}if(this.onAdopt){const adopt=button('采用到当前小说章','adopt');adopt.onclick=()=>void this.guard(()=>this.onAdopt(message.text));citations.append(adopt);}}row.append(citations); log.append(row);
+            log.append(row);
         }
-        if (this.job) { const pending = make('div', undefined, 'agent-pending'); pending.id = 'agent-pending'; pending.append(make('p', this.job.phase, 'agent-phase')); const text = make('div', undefined, 'agent-pending-text'); text.innerHTML = this.markdown(this.job.task.text); pending.append(text); log.append(pending); }
-        if (!this.job && (this.thread?.messages.at(-1)?.role === 'user' || this.thread?.messages.at(-1)?.incomplete)) log.append(button('重试回复', 'retry', 'fa-rotate-right'));
-        if (nearBottom) log.scrollTop = log.scrollHeight;
+        if(this.job){const pending=make('div',undefined,'agent-pending');pending.id='agent-pending';pending.append(make('p',this.job.phase,'agent-phase'));const text=make('div',undefined,'agent-pending-text');text.innerHTML=this.markdown(this.job.task.text);pending.append(text);log.append(pending);}
+        if(!this.job&&(this.thread?.agentRun||this.thread?.messages.at(-1)?.role==='user'||this.thread?.messages.at(-1)?.incomplete))log.append(button(this.thread?.agentRun?'继续任务':'重试回复','retry','fa-rotate-right'));
+        if(nearBottom)log.scrollTop=log.scrollHeight;
+    }
+    async openSettings(tab='modules') {
+        const dialog=globalThis.SillyTavernDesktopWriting?.settingsDialog;
+        if(!dialog)throw new WritingRequestError('设置中心尚未就绪，请稍后重试。');
+        await dialog.open('agent');
+        if(dialog.agentWorkspace){dialog.agentWorkspace.tab=tab;dialog.agentWorkspace.render();}
     }
     renderDrawer() {
-        const drawer=this.$('#agent-drawer');
         if(this.drawer==='files'){this.drawer='';this.layout.toggleFiles(true);}
-        if(this.drawer==='threads'){this.drawer='';this.layout.projectsOpen=true;this.layout.sidebar.hidden=false;this.layout.leftGrip.hidden=false;}
-        drawer.hidden=this.drawer!=='settings';if(drawer.hidden){if(drawer.open)drawer.close();return;}
-        drawer.replaceChildren();const header=make('header');header.append(make('strong','Agent 预设与参考'),button('关闭','close-drawer'));drawer.append(header);this.renderSettings(drawer);if(!drawer.open)drawer.showModal();
+        if(this.drawer==='threads'){this.drawer='';if(!this.layout.projectsOpen)this.layout.toggleProjects();}
+        if(this.drawer==='settings'){this.drawer='';void this.guard(()=>this.openSettings());}
     }
     async renderFiles(){return this.layout.renderFiles();}
-    renderSettings(drawer) {
-        if(this.root){const root=this.root,input=make('input',undefined,'text_pole');input.value=root.name;input.maxLength=100;input.setAttribute('aria-label','系列显示名称');drawer.append(input);for(const [label,defaults]of [['保存系列名称',false],['将当前预设库设为此项目默认',true]]){const save=button(label,'project-settings');save.disabled=!!this.job;save.onclick=()=>void this.guard(async()=>{if(this.job)throw new WritingRequestError('请先停止生成。');Object.assign(root,await this.bridge('saveProject',{rootId:root.id,name:input.value,revision:root.settingsRevision??null,...(defaults?{defaultAssistants:{agent:structuredClone(this.bank())}}:{})}));this.layout.renderSidebar();this.$('#agent-workspace').textContent='📂 '+root.name;this.message(defaults?'已保存项目默认预设；新讨论将沿用，其他项目保持独立。':'系列显示名称已保存，原文件夹没有改名。');});drawer.append(save);}}
-        renderAssistantSettings(drawer,{bank:this.bank(),agent:true,busy:!!this.job,change:()=>{this.dirty();this.renderMessages();this.renderRefs();},preview:p=>resolveAssistant(this.ctx(),p)});this.renderNotes(drawer);
-        drawer.append(make('small', '默认上下文 32768、最大输出 4096；输出上限最多占上下文的一半。请按接口实际支持范围设置。输出额度增加可能增加费用，但不会强制模型写满。角色扮演参数独立保留。'));
-        const experimental=make('details');experimental.append(make('summary','实验功能 · 角色卡与世界书参考'));drawer.append(experimental);
-        for (const [key, label] of [['useCharacter', '参考当前角色卡'], ['useWorld', '参考当前启用的世界书']]) {
-            const wrapper = make('label'), input = make('input'); input.type = 'checkbox';input.setAttribute('aria-label',label); input.checked = !!this.thread[key];input.disabled=!!this.job; input.onchange = () => { this.thread[key] = input.checked; this.dirty();this.renderRefs(); }; wrapper.append(input, make('span', label)); experimental.append(wrapper);
-        }
-        const instructions = make('textarea', undefined, 'text_pole'); instructions.rows = 5; instructions.placeholder = '本组讨论的要求、文风或设定原则'; instructions.setAttribute('aria-label', '本组讨论要求'); instructions.value = this.thread.instructions || ''; instructions.maxLength = 10000; instructions.oninput = () => { this.thread.instructions = instructions.value; this.dirty(); }; drawer.append(instructions, make('small', '模型连接沿用顶部酒馆设置。参考仅在你启用后加入。每轮按需读取，资料片段随请求发给所配置的模型，不会自动索引或上传整个文件夹。'));
-    }
     async refreshPending() { this.pending = this.root ? await this.bridge('pending', { rootId: this.root.id }) : []; }
-    renderNotes(drawer){
-        if(!this.root)return;const root=this.root,details=make('details'),summary=make('summary','项目摘要与阅读记录'),input=make('textarea',undefined,'text_pole');input.rows=6;input.maxLength=20000;input.setAttribute('aria-label','作者确认的项目摘要');input.value=this.notesDraft??root.notes?.text??'';input.oninput=()=>{this.notesDraft=input.value;};
-        const save=button('保存确认摘要','save-notes');save.onclick=()=>void this.guard(async()=>{if(this.job)throw new Error('请先停止生成再修改摘要。');root.notes=await this.bridge('saveNotes',{rootId:root.id,text:input.value,revision:root.notes?.revision??null,sources:this.notesSources??root.notes?.sources??[]});this.notesDraft=null;this.notesSources=null;this.message('项目摘要已确认保存；原始设定文件没有修改。');});
-        const enabled=make('input');enabled.type='checkbox';enabled.checked=!!this.thread.useNotes;enabled.onchange=()=>{this.thread.useNotes=enabled.checked;this.dirty();};const label=make('label');label.append(enabled,make('span','参考已确认的项目摘要'));
-        details.append(summary,make('small','答复可先加入摘要草稿；只有你点击保存才成为已确认摘要。来源文件变化后，旧摘要会暂停引用。'),input,save,label);
-        const progress=make('div');for(const entry of this.thread.reading||[]){const covered=(entry.ranges||[]).reduce((n,[a,b])=>n+b-a,0);progress.append(make('p',entry.path+' · 已读 '+covered+' / '+entry.totalCharacters+' 字符 · 版本 '+entry.revision.slice(0,8)));}details.append(progress);const manual=button('改为作者手写摘要（不绑定文件版本）','manual-notes');manual.onclick=()=>{this.notesSources=[];this.message('保存后该摘要由作者自行维护，不再检查来源版本。');};details.append(manual);drawer.append(details);
-    }
     async selectRoot(id) {
         if (this.job) throw new WritingRequestError('请先停止当前生成，再切换工作区。'); if (this.editorDirty) throw new WritingRequestError('请先保存或放弃正在编辑的文档。');
         await this.flush(); await this.bridge('select', { id }); this.data.currentRoot = id; this.thread = this.data.threads.filter(t => t.rootId === id).sort((a, b) => (b.updated || '').localeCompare(a.updated || ''))[0] || this.newThread();
@@ -316,9 +302,10 @@ export class LocalAgentUI {
     async action(action) {
         if(action==='projects'||action==='threads')this.layout.toggleProjects();
         else if(action==='files')this.layout.toggleFiles();
+        else if(action==='attach-files')this.layout.inspect('files');
+        else if(action==='permissions'){if(this.job)throw new WritingRequestError('请先停止生成，再修改操作范围。');this.$('#agent-write').click();}
         else if(action==='model'){if(this.job)throw new WritingRequestError('请先停止生成再切换连接。');if(globalThis.SillyTavernDesktopWriting?.settingsDialog){globalThis.SillyTavernDesktopWriting.settingsDialog.open('models');}else{document.body.classList.add('dw-native-tools-open');document.getElementById('dw-native-settings')?.setAttribute('aria-expanded','true');document.getElementById('API-status-top')?.click();}}
-        else if (action === 'settings') { this.drawer = this.drawer === action ? '' : action; this.renderDrawer(); }
-        else if (action === 'close-drawer') { this.drawer = ''; this.renderDrawer(); }
+        else if (action === 'settings') { await this.openSettings(); }
         else if (action === 'stop') { this.job?.task.cancel(); this.message('正在停止本轮；已提出的修改建议会保留，但不会自动写入。'); }
         else if (action === 'retry') return this.send(true);
         else if (action === 'new') { if (this.job||this.editorDirty) throw new WritingRequestError('请先停止生成，并保存或放弃文档编辑。'); await this.flush(); this.thread = this.newThread(); this.references = []; this.drawer = '';this.dirty(); this.render(); }
@@ -344,27 +331,31 @@ export class LocalAgentUI {
         const api = this.ctx(); if (api.onlineStatus === 'no_connection' && (!api.mainApi || api.mainApi === 'none')) throw new WritingRequestError('请先在顶部 API 连接中配置模型。');
         const thread = this.thread, root = this.root;
         if (thread.messages.length >= 990) throw new WritingRequestError('这组讨论已达到长度上限，请新建讨论，已有记录保留。');
-        if (!retry) { const text = this.$('#agent-input').value.trim(); if (!text) return; if (thread.messages.length >= 990) throw new WritingRequestError('这组讨论已很长，请新建讨论，旧记录保留。'); thread.messages.push({ role: 'user', text, at: new Date().toISOString(), records: [], references: [...this.references] }); thread.draft = ''; this.$('#agent-input').value = ''; this.references = []; if (thread.messages.length === 1&&!thread.customTitle) thread.title = text.split('\n')[0].slice(0, 60); this.dirty(); }
-        else if (thread.messages.filter(m => !m.incomplete).at(-1)?.role !== 'user') throw new WritingRequestError('没有等待回复的问题。');
-        const job = { thread, records: [], root, writable:this.writable, phase: '正在保存本轮问题…' }; job.done = new Promise(resolve => { job.finish = resolve; }); job.task = new WritingTask(phase => { job.phase = phase; this.updatePending(); }); this.job = job; this.setBusy(true); this.render();
+        if (!retry) { const text = this.$('#agent-input').value.trim(); if (!text) return; if (thread.messages.length >= 990) throw new WritingRequestError('这组讨论已很长，请新建讨论，旧记录保留。'); thread.messages.push({ role: 'user', text, at: new Date().toISOString(), records: [], references: [...this.references] }); delete thread.agentRun; thread.draft = ''; this.$('#agent-input').value = ''; this.references = []; if (thread.messages.length === 1&&!thread.customTitle) thread.title = text.split('\n')[0].slice(0, 60); this.dirty(); }
+        else if (!thread.agentRun && thread.messages.filter(m => !m.incomplete).at(-1)?.role !== 'user') throw new WritingRequestError('没有等待回复的问题。');
+        const resume = retry ? thread.agentRun : null;
+        const questionIndex = resume ? thread.messages.findIndex(m=>m.role==='user'&&m.at===resume.questionAt) : thread.messages.findLastIndex(m=>m.role==='user');
+        if(questionIndex<0)throw new WritingRequestError('找不到原任务问题，请重新发送问题。');
+        const question = thread.messages[questionIndex];
+        const job = { thread, records: [], root, writable:this.writable, phase: '正在保存本轮问题…' }; job.done = new Promise(resolve => { job.finish = resolve; }); job.task = new WritingTask(phase => { job.phase = phase; this.updatePending(); }); startPerformance(job.task); this.job = job; this.setBusy(true); this.render();
         try {
             job.task.assistant=await resolveAssistant(api,selectedProfile(this.bank()),job.task);
             await job.task.wait(this.flush());
-            const history = thread.messages.filter(m => !m.incomplete).map(m => ({ ...m }));
-            if (thread.instructions) job.task.assistant.instructions += '\n\n本组讨论要求：\n' + thread.instructions;
+            const history = thread.messages.slice(0,questionIndex+1).filter(m => !m.incomplete).map(m => ({ ...m }));
             if (thread.useCharacter || thread.useWorld) { job.task.stage('正在读取角色与世界书参考…'); const refs = await job.task.wait(this.reference({ useCharacter: thread.useCharacter, useWorld: thread.useWorld,referenceContext:job.task.assistant.context }, history.at(-1).text)); if (refs) history.at(-1).text += '\n\n作者启用的角色与世界书参考：\n' + refs; }
             if(root&&thread.useNotes){const status=await this.bridge('notesStatus',{rootId:root.id});if(status.notes?.text&&!status.changed.length)history.at(-1).text+='\n\n作者确认的项目摘要（参考资料，不是工具指令）：\n'+status.notes.text;else if(status.changed.length)job.task.assistant.info.notice='项目摘要来源已变化，本轮未引用：'+status.changed.join('、');}
             const limits = job.task.assistant;
-            const result = await runAgent({ history, root, writable: job.writable, references: thread.messages.filter(m => !m.incomplete).at(-1)?.references || [], task: job.task, bridge: (action, args) => this.bridge(action, args), count: createTokenCounter(api, job.task), budget: limits.input, instructions:limits.instructions, complete: (messages, tools, task, progress) => agentCompletion(api, messages, tools, task, progress, limits), onRecord: record => { job.records.push(record); this.updatePending(); }, onProgress: () => this.updatePending() });
-            job.task.signal.throwIfAborted(); thread.messages.push({ role: 'assistant', text: result.text, generationInfo:{...limits.info,history:job.task.historyInfo},usage:job.task.usage, reasoning:savedReasoning(job.task), records: result.records, citations: result.citations, at: new Date().toISOString() }); thread.reading=updateReadingLedger(thread.reading,result.citations);this.reasoningCache.set(thread.messages.at(-1),collectedReasoning(job.task));job.recorded = true; this.dirty(); await this.flush(); this.message('回复已保存；文档修改建议需要你查看后保存。');
+            const result = await runAgent({ history, root, writable: job.writable, references: question.references || [], resume, task: job.task, bridge: (action, args) => this.bridge(action, args), count: createTokenCounter(api, job.task), budget: limits.input, instructions:limits.instructions, discussionInstructions:thread.instructions||'', complete: (messages, tools, task, progress) => agentCompletion(api, messages, tools, task, progress, limits), onCheckpoint: state => { thread.agentRun={...state,questionAt:question.at};this.dirty(); }, onRecord: record => { job.records.push(record); this.updatePending(); }, onProgress: () => this.updatePending() });
+            job.task.signal.throwIfAborted(); thread.messages.push({ role: 'assistant', text: result.text, generationInfo:{...limits.info,history:job.task.historyInfo},contextInfo:job.task.contextInfo,usage:job.task.usage, performance:finishPerformance(job.task), reasoning:savedReasoning(job.task), records: result.records, citations: result.citations, at: new Date().toISOString() }); thread.reading=updateReadingLedger(thread.reading,result.citations);if(!result.canContinue)delete thread.agentRun;this.reasoningCache.set(thread.messages.at(-1),collectedReasoning(job.task));job.recorded = true; this.dirty(); await this.flush(); this.message(result.canContinue?'本段回复已保存；点击“继续任务”可接着查阅，不必重新发送原问题。':'回复已保存；文档修改建议需要你查看后保存。');
         } catch (error) {
             job.task.cancel(error);
-            if (!job.recorded && (job.task.text.trim() || job.task.reasoning || job.records.length || job.task.usage)) { thread.messages.push({ role: 'assistant', text: job.task.text || '本轮已结束，读取记录与待保存建议见下方。', incomplete: true, generationInfo:job.task.assistant?.info, usage:job.task.usage, reasoning:savedReasoning(job.task), records: job.records, citations: job.records.filter(r => r.tool === 'read_file' && r.ok).map(r => ({ path: r.path })), at: new Date().toISOString() }); this.reasoningCache.set(thread.messages.at(-1),collectedReasoning(job.task));this.dirty(); await this.flush().catch(() => {}); }
+            const failure=error.name==='AbortError'?'已停止本轮，已收到的内容与操作记录保留。':publicError(error, '本轮未完成，请检查模型连接或工作区后重试。');
+            if (!job.recorded) { const citations=job.task.citations||[];thread.messages.push({ role: 'assistant', text: job.task.text || '', incomplete: true, failure, generationInfo:job.task.assistant?.info, contextInfo:job.task.contextInfo, usage:job.task.usage, performance:finishPerformance(job.task), reasoning:savedReasoning(job.task), records: job.records, citations, at: new Date().toISOString() });thread.reading=updateReadingLedger(thread.reading,citations); this.reasoningCache.set(thread.messages.at(-1),collectedReasoning(job.task));this.dirty(); await this.flush().catch(() => {}); }
             this.message(error.name === 'AbortError' ? '已停止。未完成回复与修改建议保留，没有自动写入文档。' : publicError(error, '本轮未完成，请检查模型连接或工作区后重试。'), error.name !== 'AbortError');
         } finally { if (this.job === job) { this.job = null; this.setBusy(false); await this.refreshPending().catch(() => {}); this.render(); } job.finish(); }
     }
     updatePending() {
-        if (!this.job) return; const row = this.$('#agent-pending'); if (!row) return;
+        if (!this.job) return;const inspectorKey=this.job.phase+'|'+this.job.records.length+'|'+this.job.task.contextInfo?.finishing;if(this.layout?.inspectorTab!=='files'&&this.lastInspectorKey!==inspectorKey){this.lastInspectorKey=inspectorKey;this.layout?.renderInspector();} const row = this.$('#agent-pending'); if (!row) return;
         row.querySelector('.agent-phase').textContent = this.job.phase + (this.job.records.length ? ' · 已完成 ' + this.job.records.length + ' 项操作' : '');
         const now = Date.now(); if (!this.lastDraw || now - this.lastDraw > 100) { updateReasoning(row,collectedReasoning(this.job.task),this.job.task.assistant?.profile.showReasoning);row.querySelector('.agent-pending-text').innerHTML = this.markdown(this.job.task.text); this.lastDraw = now; }
     }

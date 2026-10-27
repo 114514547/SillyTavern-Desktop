@@ -23,16 +23,17 @@ export class WritingTask {
 // The bundled GPT tokenizer is available offline. It is an estimate for other models;
 // the caller reserves context headroom. Never trigger a model-specific tokenizer download.
 export function createTokenCounter(api, task, { request = globalThis.fetch.bind(globalThis), timeout = 2000, onEstimate = () => {} } = {}) {
-    const cache = new Map(); let fallback = false;
-    return async text => {
+    const cache = new Map(); let fallback = false,cacheCharacters=0;
+    const counter=async text => {
         task.signal.throwIfAborted();
-        if (cache.has(text)) return cache.get(text);
+        if (cache.has(text)){if(task.performance)task.performance.tokenizerCacheHits++;return cache.get(text);}
         let count;
         if (!fallback) {
             const controller = new AbortController();
             const stop = () => controller.abort(task.signal.reason);
             task.signal.addEventListener('abort', stop, { once: true });
             try {
+                if(task.performance)task.performance.tokenizerRequests++;
                 count = await waitFor((async () => {
                     const response = await request('/api/tokenizers/openai/count?model=gpt-4o', { method: 'POST', headers: api.getRequestHeaders(), body: JSON.stringify([{ role: 'user', content: text }]), signal: controller.signal });
                     if (!response.ok) throw new Error('Tokenizer unavailable');
@@ -42,13 +43,18 @@ export function createTokenCounter(api, task, { request = globalThis.fetch.bind(
                 })(), task.signal, timeout);
             } catch (error) {
                 if (task.signal.aborted) throw error;
-                fallback = true; onEstimate();
+                fallback = true;if(task.performance)task.performance.tokenizerEstimated=true;onEstimate();
             } finally { task.signal.removeEventListener('abort', stop); controller.abort(); }
         }
         // Byte count is deliberately conservative when even the local tokenizer is unavailable.
         count ??= new TextEncoder().encode(text).length;
-        cache.set(text, count); return count;
+        cache.set(text, count);cacheCharacters+=text.length;while(cache.size>32||cacheCharacters>2000000){const oldest=cache.keys().next().value;cacheCharacters-=oldest.length;cache.delete(oldest);}return count;
     };
+    // UTF-8 bytes are a conservative upper bound for the bundled byte tokenizer.
+    // Small inputs need no tokenizer HTTP request; larger inputs still use the
+    // existing GPT estimate and the caller's model-agnostic safety margin.
+    counter.fits=async(text,budget)=>{task.signal.throwIfAborted();if(cache.has(text))return await counter(text)<=budget;if(text.length*3+32<=budget||new TextEncoder().encode(text).length+32<=budget){if(task.performance)task.performance.tokenizerBoundChecks++;return true;}return await counter(text)<=budget;};
+    return counter;
 }
 function statusError(status) {
     const messages = { 400: '请求参数或模型设置不被服务接受。', 401: 'API 身份验证失败，请检查密钥配置。', 402: '模型服务提示余额不足。', 403: '模型服务拒绝访问。', 404: '模型或接口路径不存在。', 429: '模型服务限流，请稍后重试。' };

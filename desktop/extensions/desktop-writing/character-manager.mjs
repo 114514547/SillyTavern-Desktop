@@ -1,5 +1,6 @@
 import {icon} from './icons.mjs';
 import {CharacterCards,characterDraft} from './character-manager-data.mjs';
+import {world_names} from '/scripts/world-info.js';
 
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 const control=(text,action,glyph,cls='')=>{const n=el('button',undefined,'cm-button '+cls);n.type='button';n.dataset.cmAction=action;if(glyph)n.append(icon(glyph));n.append(el('span',text));return n;};
@@ -7,8 +8,8 @@ const thumb=avatar=>'/thumbnail?type=avatar&file='+encodeURIComponent(avatar);
 const changed=(a,b)=>JSON.stringify(a)!==JSON.stringify(b);
 
 export class CharacterManager{
-    constructor({ctx,busy=()=>false,close,openNative,status}){
-        Object.assign(this,{ctx,busy,close,openNative});this.cards=new CharacterCards({ctx});this.tab='profile';this.opening=0;this.filter='all';this.handlers=[];this.serial=0;this.avatarVersion=0;
+    constructor({ctx,busy=()=>false,close,openNative,openWorld,status}){
+        Object.assign(this,{ctx,busy,close,openNative,openWorld});this.cards=new CharacterCards({ctx});this.tab='profile';this.opening=0;this.filter='all';this.handlers=[];this.serial=0;this.avatarVersion=0;
         this.status=(text,error=false)=>{this.message=text;this.messageError=error;status(text,error);this.syncState();};
     }
     get dirty(){return !!this.draft&&changed(this.base,this.draft);}
@@ -65,7 +66,9 @@ export class CharacterManager{
         this.$('.cm-subtitle').textContent=(this.draft.creator||'未署名')+' · '+(this.draft.character_version?'v'+this.draft.character_version:'未设版本');
         this.$('.cm-tags').replaceChildren(...this.draft.tags.map(tag=>el('span',tag)));
         const favorite=this.$('[data-cm-action=favorite]');favorite.setAttribute('aria-pressed',String(this.draft.fav));favorite.querySelector('span').textContent=this.draft.fav?'已收藏':'收藏';
-        this.$('[data-world]').textContent=this.card.data?.extensions?.world||'未关联';
+        const world=this.$('[data-world]'),select=el('select');world.classList.add('cm-field');select.dataset.field='world';select.setAttribute('aria-label','角色关联世界书');
+        for(const name of ['',...new Set([...(world_names||[]),this.draft.world].filter(Boolean))]){const option=el('option',name||'未关联');option.value=name;select.append(option);}select.value=this.draft.world;world.replaceChildren(select);
+        this.$('[data-cm-action=world]').textContent='打开世界书设置';
     }
     syncState(){
         if(!this.host||this.disposed)return;const pending=!!(this.working||this.activating);for(const n of this.host.querySelectorAll('input:not([type=file]),textarea,select,button'))n.disabled=pending;
@@ -86,7 +89,6 @@ export class CharacterManager{
     async save(){
         this.assertIdle();if(!this.dirty)return;this.working=true;this.syncState();
         try{const stored=await this.cards.save(this.avatar,this.base,this.draft);if(this.disposed)return;this.card=stored;this.base=characterDraft(stored);this.draft=structuredClone(this.base);const c=this.ctx();await c.getOneCharacter(this.avatar);
-            const native=await import('/script.js');if(c.characters[c.characterId]?.avatar===this.avatar)native.select_selected_character(c.characterId,{switchMenu:false});
             await c.eventSource.emit(c.eventTypes.CHARACTER_EDITED,{detail:{id:c.characters.findIndex(ch=>ch?.avatar===this.avatar),character:stored}});this.renderList();this.updateIdentity();this.status('角色修改已保存。');
         }finally{this.working=false;this.syncState();}
     }
@@ -95,7 +97,6 @@ export class CharacterManager{
         this.activating=true;this.syncState();
         try{if(c.characterId!==undefined||c.groupId)await c.saveChat();const id=this.ctx().characters.findIndex(ch=>ch?.avatar===this.avatar);if(id<0)throw Error('角色卡已变化，请重新选择。');await this.ctx().selectCharacterById(id,{switchMenu:false});
             if(this.ctx().groupId||this.ctx().characters[this.ctx().characterId]?.avatar!==this.avatar)throw Error('原生服务暂未完成角色切换，请稍后重试。');
-            (await import('/script.js')).select_selected_character(this.ctx().characterId,{switchMenu:false});
         }finally{this.activating=false;this.syncState();}
     }
     async settle(){this.assertIdle();return this.beforeLeave();}
@@ -113,9 +114,9 @@ export class CharacterManager{
         if(action==='new')return this.create();
         if(action==='import'){if(await this.settle())this.file.click();return;}
         if(action==='cover'){if(await this.settle())this.coverFile.click();return;}
-        if(action==='native'){if(!await this.settle())return;if(this.avatar)await this.activate();return this.openNative();}
+        if(action==='native'){if(!await this.settle())return;if(this.avatar){await this.activate();(await import('/script.js')).select_selected_character(this.ctx().characterId,{switchMenu:false});}return this.openNative();}
         if(action==='chat'){if(!await this.settle())return;await this.activate();return this.close();}
-        if(action==='world'){if(!await this.settle())return;await this.activate();const select=document.getElementById('char-management-dropdown'),option=document.getElementById('set_character_world');if(!select||!option)throw Error('世界书关联入口暂不可用。');globalThis.jQuery(select).val(option.value).trigger('change');return;}
+        if(action==='world'){if(await this.settle())return this.openWorld?.();return;}
         if(action==='rename')return this.rename();
         if(action==='duplicate'){if(!await this.settle())return;this.working=true;this.syncState();let avatar;try{avatar=await(await import('/script.js')).duplicateCharacter({avatar:this.avatar});}finally{this.working=false;this.syncState();}if(avatar)await this.load(avatar);return;}
         if(action==='export-json'||action==='export-png')return this.export(action==='export-json'?'json':'png');
